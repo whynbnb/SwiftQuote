@@ -82,7 +82,7 @@ final class AppSettings: ObservableObject {
     @Published var appearance: AppAppearance {
         didSet {
             UserDefaults.standard.set(appearance.rawValue, forKey: "appearance")
-            applyAppearance()
+            onAppearanceChange?()
         }
     }
     @Published var language: AppLanguage {
@@ -168,13 +168,19 @@ final class AppSettings: ObservableObject {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "dev"
     }
 
-    func applyAppearance() {
+    /// 主题对应的窗口外观；只应用到本 App 自己的窗口。
+    /// 不要赋给 `NSApp.appearance`：macOS 会把前台 App 的外观套到整条菜单栏上，
+    /// 选「浅色」时整个菜单栏会变灰，状态项文字也可能因此看不见。
+    var appAppearance: NSAppearance? {
         switch appearance {
-        case .system: NSApp.appearance = nil
-        case .light:  NSApp.appearance = NSAppearance(named: .aqua)
-        case .dark:   NSApp.appearance = NSAppearance(named: .darkAqua)
+        case .system: return nil
+        case .light:  return NSAppearance(named: .aqua)
+        case .dark:   return NSAppearance(named: .darkAqua)
         }
     }
+
+    /// 主题外观变化时的回调（由 StatusBarController 设置，用于更新已打开的窗口）
+    var onAppearanceChange: (() -> Void)?
 
     var isChinese: Bool {
         switch language {

@@ -14,12 +14,24 @@ final class StatusBarController: NSObject, ObservableObject {
     private var appearanceObservation: NSKeyValueObservation?
     private var cancellables = Set<AnyCancellable>()
 
+    /// 上一次真正写入按钮的标题，用于避免重复赋值（见 refreshTitle）。
+    private var lastRenderedTitle: NSAttributedString?
+    private var lastRenderedLength: CGFloat = 0
+
     func setup() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem.button else { return }
         button.action = #selector(onClick(_:))
         button.target = self
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+
+        // macOS 15 在多显示器 / 通用控制下会把「非活动显示器」的菜单栏整体压暗。
+        // 只有带 image 的状态项才会走系统的 inactive-display 渲染；纯 attributedTitle
+        // 的项不会随之变暗，浅色文字在灰色菜单栏上就会像「消失」了一样。
+        // 这里挂一个空图片（不占布局），只为让状态项进入 image-backed 渲染路径。
+        // 参考：exelban/stats#2131（macOS 15.0 上的同一问题）。
+        button.image = NSImage()
+        button.imagePosition = .imageLeading
 
         // 监听菜单栏深浅变化（壁纸/系统外观改变时系统会自动调整菜单栏外观）
         settings.menuBarIsDark = Self.isDarkAppearance(button.effectiveAppearance)
@@ -37,6 +49,7 @@ final class StatusBarController: NSObject, ObservableObject {
 
         // 设置变化时刷新菜单栏（直接回调，比 Combine/UserDefaults 通知可靠）
         settings.onDisplayChange = { [weak self] in self?.refreshTitle() }
+        settings.onAppearanceChange = { [weak self] in self?.applyAppearanceToWindows() }
 
         refreshTitle()
     }
@@ -59,9 +72,20 @@ final class StatusBarController: NSObject, ObservableObject {
                 string: String(ch),
                 attributes: [.font: settings.font, .foregroundColor: color]))
         }
-        button.attributedTitle = str
         // 紧凑布局：长度 = 文字实际宽度（cell 内部零补白；剩余间距是系统项间距）
-        statusItem.length = min(ceil(str.size().width), settings.maxWidth)
+        let width = min(ceil(str.size().width), settings.maxWidth)
+
+        // 避免重复写入相同的 attributedTitle：macOS 上反复赋值（尤其是相同值）
+        // 会让状态项整个消失。内容/宽度没变就直接跳过。
+        if let lastRenderedTitle,
+           lastRenderedTitle.isEqual(to: str),
+           lastRenderedLength == width {
+            return
+        }
+        lastRenderedTitle = str
+        lastRenderedLength = width
+        button.attributedTitle = str
+        statusItem.length = width
     }
 
     @objc private func onClick(_ sender: NSStatusBarButton) {
@@ -167,6 +191,7 @@ final class StatusBarController: NSObject, ObservableObject {
         if aboutWindowController == nil {
             aboutWindowController = AboutWindowController()
         }
+        aboutWindowController?.window?.appearance = settings.appAppearance
         aboutWindowController?.showWindow(nil)
         aboutWindowController?.window?.center()
         NSApp.activate(ignoringOtherApps: true)
@@ -204,6 +229,7 @@ final class StatusBarController: NSObject, ObservableObject {
             panel.onDismiss = { [weak self] in self?.inputPanel = nil }
             inputPanel = panel
         }
+        inputPanel?.appearance = settings.appAppearance
         inputPanel?.show(near: statusItem.button)
     }
 
@@ -216,10 +242,21 @@ final class StatusBarController: NSObject, ObservableObject {
         aboutWindowController = nil
     }
 
+    /// 把主题外观应用到本 App 自己的窗口。
+    /// 不设置 `NSApp.appearance`：macOS 会把前台 App 的外观套到整条菜单栏上，
+    /// 选「浅色」时会让整个菜单栏变灰，状态项文字也可能因此看不清。
+    private func applyAppearanceToWindows() {
+        let appearance = settings.appAppearance
+        settingsWindowController?.window?.appearance = appearance
+        aboutWindowController?.window?.appearance = appearance
+        inputPanel?.appearance = appearance
+    }
+
     private func showSettings() {
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController()
         }
+        settingsWindowController?.window?.appearance = settings.appAppearance
         settingsWindowController?.showWindow(nil)
         settingsWindowController?.window?.center()
         NSApp.activate(ignoringOtherApps: true)
