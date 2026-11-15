@@ -57,7 +57,7 @@ struct L {
     func aboutVersion(_ v: String, _ b: String) -> String {
         t("版本 \(v) (\(b))", "Version \(v) (\(b))")
     }
-    let repositoryURL = "https://github.com/WHYBBE/SwiftQuote"
+    let repositoryURL = "https://github.com/whynbnb/SwiftQuote"
     var groupPresets: String { t("预设", "Presets") }
     var apply: String       { t("应用", "Apply") }
 
