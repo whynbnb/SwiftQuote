@@ -8,6 +8,15 @@ struct ColorEntry: Identifiable, Codable, Equatable {
     var hex: String
 }
 
+extension ColorEntry {
+    /// 缺失 id/hex 时使用默认值，避免旧/新备份因单个字段导致整组颜色丢失。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        hex = (try? c.decode(String.self, forKey: .hex)) ?? "#FFFFFF"
+    }
+}
+
 /// 菜单栏块的持久化快照。运行时状态（菜单栏深浅等）不写在这里。
 struct BlockSnapshot: Codable, Equatable {
     var id: UUID
@@ -69,33 +78,40 @@ struct BlockSnapshot: Codable, Equatable {
 }
 
 extension BlockSnapshot {
-    /// 兼容旧版本的块数据：新增的日期/日历字段缺失时使用默认值。
+    /// 兼容旧/新版本的块数据：
+    /// - 缺失字段使用默认值（旧版本备份）
+    /// - 未知字段自动忽略（新版本备份）
+    /// - 类型异常只影响对应字段，不会让整个备份失败
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(UUID.self, forKey: .id)
-        autosaveName = try c.decode(String.self, forKey: .autosaveName)
-        text = try c.decode(String.self, forKey: .text)
-        prefix = try c.decode(String.self, forKey: .prefix)
-        suffix = try c.decode(String.self, forKey: .suffix)
-        trackHistory = try c.decode(Bool.self, forKey: .trackHistory)
-        maxWidth = try c.decode(Double.self, forKey: .maxWidth)
-        fontSize = try c.decode(Double.self, forKey: .fontSize)
-        bold = try c.decode(Bool.self, forKey: .bold)
-        fontFamily = try c.decodeIfPresent(String.self, forKey: .fontFamily)
-        colorEntries = try c.decode([ColorEntry].self, forKey: .colorEntries)
-        adaptiveColors = try c.decode(Bool.self, forKey: .adaptiveColors)
-        lightBarColorEntries = try c.decode([ColorEntry].self, forKey: .lightBarColorEntries)
-        darkBarColorEntries = try c.decode([ColorEntry].self, forKey: .darkBarColorEntries)
-        history = try c.decode([String].self, forKey: .history)
-        rotationEnabled = try c.decode(Bool.self, forKey: .rotationEnabled)
-        rotationPaused = try c.decode(Bool.self, forKey: .rotationPaused)
-        rotationInterval = try c.decode(RotationInterval.self, forKey: .rotationInterval)
-        rotationOrder = try c.decode(RotationOrder.self, forKey: .rotationOrder)
-        rotationItems = try c.decode([RotationItem].self, forKey: .rotationItems)
-        dateEnabled = try c.decodeIfPresent(Bool.self, forKey: .dateEnabled) ?? false
-        datePattern = try c.decodeIfPresent(String.self, forKey: .datePattern)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        autosaveName = (try? c.decode(String.self, forKey: .autosaveName)) ?? ""
+        text = (try? c.decode(String.self, forKey: .text)) ?? ""
+        prefix = (try? c.decode(String.self, forKey: .prefix)) ?? ""
+        suffix = (try? c.decode(String.self, forKey: .suffix)) ?? ""
+        trackHistory = (try? c.decode(Bool.self, forKey: .trackHistory)) ?? true
+        maxWidth = (try? c.decode(Double.self, forKey: .maxWidth)) ?? 200
+        fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 13
+        bold = (try? c.decode(Bool.self, forKey: .bold)) ?? true
+        fontFamily = try? c.decode(String.self, forKey: .fontFamily)
+        colorEntries = (try? c.decode([ColorEntry].self, forKey: .colorEntries))
+            ?? [ColorEntry(hex: "#FFFFFF")]
+        adaptiveColors = (try? c.decode(Bool.self, forKey: .adaptiveColors)) ?? false
+        lightBarColorEntries = (try? c.decode([ColorEntry].self, forKey: .lightBarColorEntries))
+            ?? [ColorEntry(hex: "#000000")]
+        darkBarColorEntries = (try? c.decode([ColorEntry].self, forKey: .darkBarColorEntries))
+            ?? [ColorEntry(hex: "#FFFFFF")]
+        history = (try? c.decode([String].self, forKey: .history)) ?? []
+        rotationEnabled = (try? c.decode(Bool.self, forKey: .rotationEnabled)) ?? false
+        rotationPaused = (try? c.decode(Bool.self, forKey: .rotationPaused)) ?? false
+        rotationInterval = (try? c.decode(RotationInterval.self, forKey: .rotationInterval))
+            ?? .oneMinute
+        rotationOrder = (try? c.decode(RotationOrder.self, forKey: .rotationOrder)) ?? .sequential
+        rotationItems = (try? c.decode([RotationItem].self, forKey: .rotationItems)) ?? []
+        dateEnabled = (try? c.decode(Bool.self, forKey: .dateEnabled)) ?? false
+        datePattern = (try? c.decode(String.self, forKey: .datePattern))
             ?? BlockSnapshot.defaultDatePattern
-        calendarOnLeftClick = try c.decodeIfPresent(Bool.self, forKey: .calendarOnLeftClick) ?? false
+        calendarOnLeftClick = (try? c.decode(Bool.self, forKey: .calendarOnLeftClick)) ?? false
     }
 }
 
@@ -200,14 +216,20 @@ final class BlockSettings: ObservableObject, Identifiable {
 
     init(snapshot: BlockSnapshot) {
         id = snapshot.id
-        autosaveName = snapshot.autosaveName
+        autosaveName = snapshot.autosaveName.isEmpty
+            ? "SwiftQuoteStatusItem-\(snapshot.id.uuidString)"
+            : snapshot.autosaveName
         text = snapshot.text
         prefix = snapshot.prefix
         suffix = snapshot.suffix
         trackHistory = snapshot.trackHistory
-        maxWidth = snapshot.maxWidth
+        maxWidth = snapshot.maxWidth.isFinite
+            ? min(max(snapshot.maxWidth, 40), 400)
+            : 200
         // 菜单栏高度约 24pt，字号上限压到 21，避免上下被裁切；同时兜底旧数据中的越界值。
-        fontSize = min(max(snapshot.fontSize, 9), 21)
+        fontSize = snapshot.fontSize.isFinite
+            ? min(max(snapshot.fontSize, 9), 21)
+            : 13
         bold = snapshot.bold
         // 字体族：只接受当前系统仍可用的字体，否则回退系统默认
         fontFamily = snapshot.fontFamily.flatMap {
@@ -411,10 +433,67 @@ final class BlockSettings: ObservableObject, Identifiable {
     }
 }
 
+/// 解析后的备份预览：确认后再应用到 AppSettings。
+struct BackupPreview {
+    let blocks: [BlockSnapshot]
+    let appearance: AppAppearance?
+    let language: AppLanguage?
+    let launchAtLogin: Bool?
+    let selectedBlockID: UUID?
+    let schemaVersion: Int
+    let droppedBlocks: Int
+}
+
+/// 导入结果（用于 UI 反馈）。
+struct BackupImportResult {
+    let importedBlocks: Int
+    let droppedBlocks: Int
+    let schemaVersion: Int
+}
+
+enum BackupError: Error {
+    /// JSON 结构无法识别
+    case invalidFile
+    /// 文件里没有任何可用的块
+    case noValidBlocks
+}
+
+/// 导出文档。字段只增不减；读取端对缺失/未知字段都做了兼容。
+private struct BackupExportDocument: Encodable {
+    let format = "SwiftQuoteSettings"
+    let schemaVersion: Int
+    let appVersion: String
+    let appBuild: String
+    let exportedAt: String
+    let settings: Payload
+
+    struct Payload: Encodable {
+        let appearance: String
+        let language: String
+        let launchAtLogin: Bool?
+        let selectedBlockID: String?
+        let blocks: [BlockSnapshot]
+    }
+}
+
 /// 全局设置 + 所有菜单栏块。每个块在菜单栏有独立的 NSStatusItem。
 @MainActor
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
+
+    /// 设置/备份数据结构版本。修改备份结构时递增，并在 decodeBackup 中做迁移。
+    static let dataVersion = 1
+
+    /// 恢复默认时需要清理的 UserDefaults 键。
+    private static let managedDefaultsKeys = [
+        "blocks", "selectedBlockID", "settingsDataVersion",
+        "appearance", "appLanguage",
+        "text", "prefix", "suffix", "trackHistory", "maxWidth", "fontSize", "bold",
+        "fontFamily", "colorEntries", "colors", "history",
+        "adaptiveColors", "lightBarColorEntries", "darkBarColorEntries",
+        "rotationEnabled", "rotationPaused", "rotationInterval", "rotationOrder",
+        "rotationItems",
+    ]
 
     /// 所有菜单栏块（至少一个）。结构变化通过 onStructureChange 通知状态栏同步。
     @Published private(set) var blocks: [BlockSettings]
@@ -518,21 +597,25 @@ final class AppSettings: ObservableObject {
         if let data = d.data(forKey: "blocks"),
            let decoded = try? JSONDecoder().decode([BlockSnapshot].self, from: data),
            !decoded.isEmpty {
-            // 兜底损坏/重复数据：ID 与 autosaveName 都必须唯一
-            var seenIDs = Set<UUID>()
-            var seenNames = Set<String>()
-            return decoded.map { snapshot in
-                var snapshot = snapshot
-                if seenIDs.contains(snapshot.id) { snapshot.id = UUID() }
-                seenIDs.insert(snapshot.id)
-                if snapshot.autosaveName.isEmpty || seenNames.contains(snapshot.autosaveName) {
-                    snapshot.autosaveName = "SwiftQuoteStatusItem-\(UUID().uuidString)"
-                }
-                seenNames.insert(snapshot.autosaveName)
-                return snapshot
-            }
+            return sanitize(decoded)
         }
         return [legacySnapshot(d)]
+    }
+
+    /// 兜底损坏/重复数据：ID 与 autosaveName 都必须唯一。
+    private static func sanitize(_ snapshots: [BlockSnapshot]) -> [BlockSnapshot] {
+        var seenIDs = Set<UUID>()
+        var seenNames = Set<String>()
+        return snapshots.map { snapshot in
+            var snapshot = snapshot
+            if seenIDs.contains(snapshot.id) { snapshot.id = UUID() }
+            seenIDs.insert(snapshot.id)
+            if snapshot.autosaveName.isEmpty || seenNames.contains(snapshot.autosaveName) {
+                snapshot.autosaveName = "SwiftQuoteStatusItem-\(UUID().uuidString)"
+            }
+            seenNames.insert(snapshot.autosaveName)
+            return snapshot
+        }
     }
 
     /// 从旧版本的单块键迁移出第一个块。
@@ -608,11 +691,207 @@ final class AppSettings: ObservableObject {
             UserDefaults.standard.set(data, forKey: "blocks")
         }
         UserDefaults.standard.set(selectedBlockID.uuidString, forKey: "selectedBlockID")
+        UserDefaults.standard.set(Self.dataVersion, forKey: "settingsDataVersion")
     }
 
     /// 补记所有块可能仍在编辑中的正文（endTextEditing 幂等）。
     func endTextEditing() {
         for block in blocks { block.endTextEditing() }
+    }
+
+    // MARK: - 备份与恢复
+
+    /// 导出当前所有设置（JSON）。未知字段可由未来版本忽略，缺失字段由读取端补默认值。
+    func exportBackupData() throws -> Data {
+        let document = BackupExportDocument(
+            schemaVersion: Self.dataVersion,
+            appVersion: versionString,
+            appBuild: buildString,
+            exportedAt: ISO8601DateFormatter().string(from: Date()),
+            settings: .init(
+                appearance: appearance.rawValue,
+                language: language.rawValue,
+                launchAtLogin: loginItemAvailable ? launchAtLogin : nil,
+                selectedBlockID: selectedBlockID.uuidString,
+                blocks: blocks.map(\.snapshot)))
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(document)
+    }
+
+    /// 解析备份但不应用；UI 可先展示块数量、数据版本和丢弃数量供用户确认。
+    func decodeBackup(_ data: Data) throws -> BackupPreview {
+        let root: Any
+        do {
+            root = try JSONSerialization.jsonObject(with: data, options: [])
+        } catch {
+            throw BackupError.invalidFile
+        }
+
+        var schemaVersion = 0
+        var payload: [String: Any]?
+        var blockItems: [Any]?
+
+        if let dict = root as? [String: Any] {
+            if let format = dict["format"] as? String,
+               !format.isEmpty,
+               format != "SwiftQuoteSettings" {
+                throw BackupError.invalidFile
+            }
+            schemaVersion = Self.intValue(dict["schemaVersion"]) ?? 0
+            if let settingsDict = dict["settings"] as? [String: Any] {
+                payload = settingsDict
+            } else if dict["blocks"] is [Any] {
+                payload = dict
+            }
+            blockItems = dict["blocks"] as? [Any]
+        } else if let array = root as? [Any] {
+            // 兼容直接导出的 blocks 数组
+            blockItems = array
+        }
+
+        // 目前只有版本 1；未来新增字段时，在此按 schemaVersion 做必要迁移。
+        // BlockSnapshot 对缺失字段使用默认值、对未知字段自动忽略，因此大多数升级无需额外迁移。
+
+        if let payload {
+            if blockItems == nil {
+                blockItems = payload["blocks"] as? [Any]
+            }
+            if schemaVersion == 0 {
+                schemaVersion = Self.intValue(payload["schemaVersion"]) ?? 0
+            }
+        }
+
+        guard let blockItems, !blockItems.isEmpty else { throw BackupError.noValidBlocks }
+
+        var blocks: [BlockSnapshot] = []
+        var droppedBlocks = 0
+        for item in blockItems {
+            // 只接受至少包含一个已知内容字段的对象；未来完全改版、无法识别的块直接丢弃，
+            // 避免生成一堆空白块。
+            guard let dict = item as? [String: Any],
+                  Self.hasRecognizedBlockContent(dict),
+                  JSONSerialization.isValidJSONObject(item),
+                  let itemData = try? JSONSerialization.data(withJSONObject: item),
+                  let snapshot = try? JSONDecoder().decode(BlockSnapshot.self, from: itemData) else {
+                droppedBlocks += 1
+                continue
+            }
+            blocks.append(snapshot)
+        }
+        guard !blocks.isEmpty else { throw BackupError.noValidBlocks }
+
+        let meta = payload ?? (root as? [String: Any])
+        let appearanceValue = meta?["appearance"] as? String
+        let languageValue = meta?["language"] as? String
+        let launchValue = meta?["launchAtLogin"] as? Bool
+        let selectedValue = meta?["selectedBlockID"] as? String
+
+        return BackupPreview(
+            blocks: Self.sanitize(blocks),
+            appearance: appearanceValue.flatMap(AppAppearance.init(rawValue:)),
+            language: languageValue.flatMap(AppLanguage.init(rawValue:)),
+            launchAtLogin: launchValue,
+            selectedBlockID: selectedValue.flatMap(UUID.init(uuidString:)),
+            schemaVersion: schemaVersion,
+            droppedBlocks: droppedBlocks)
+    }
+
+    /// 应用已解析的备份，替换全部块和（存在时）外观/语言设置。
+    @discardableResult
+    func applyBackup(_ preview: BackupPreview) -> BackupImportResult {
+        endTextEditing()
+
+        let newBlocks = preview.blocks.map { snapshot -> BlockSettings in
+            let block = BlockSettings(snapshot: snapshot)
+            block.onChange = { [weak self, weak block] change in
+                guard let self, let block else { return }
+                self.blockChanged(block, change)
+            }
+            return block
+        }
+        guard !newBlocks.isEmpty else {
+            return BackupImportResult(importedBlocks: 0,
+                                      droppedBlocks: preview.droppedBlocks,
+                                      schemaVersion: preview.schemaVersion)
+        }
+
+        blocks = newBlocks
+        if let selected = preview.selectedBlockID,
+           newBlocks.contains(where: { $0.id == selected }) {
+            selectedBlockID = selected
+        } else {
+            selectedBlockID = newBlocks[0].id
+        }
+
+        // 只覆盖备份中明确提供的全局设置；直接导入 blocks 数组时保留当前外观/语言
+        if let appearance = preview.appearance { self.appearance = appearance }
+        if let language = preview.language { self.language = language }
+        // 登录项是系统状态：仅在可用且备份明确提供时尝试恢复，失败会显示在通用页
+        if loginItemAvailable,
+           let launchAtLogin = preview.launchAtLogin,
+           self.launchAtLogin != launchAtLogin {
+            self.launchAtLogin = launchAtLogin
+        }
+
+        persistBlocks()
+        onStructureChange?()
+        onAppearanceChange?()
+
+        return BackupImportResult(importedBlocks: newBlocks.count,
+                                  droppedBlocks: preview.droppedBlocks,
+                                  schemaVersion: preview.schemaVersion)
+    }
+
+    /// 一键恢复默认：清空本 App 管理的键，并生成一个默认块。
+    /// 不修改系统「开机自启」状态。
+    func resetToDefaults() {
+        endTextEditing()
+
+        let defaults = UserDefaults.standard
+        for key in Self.managedDefaultsKeys {
+            defaults.removeObject(forKey: key)
+        }
+
+        var snapshot = BlockSnapshot.makeDefault(autosaveName: "SwiftQuoteStatusItem",
+                                                 text: "Aloha!")
+        snapshot.prefix = "["
+        snapshot.suffix = "]"
+        let block = BlockSettings(snapshot: snapshot)
+        block.onChange = { [weak self, weak block] change in
+            guard let self, let block else { return }
+            self.blockChanged(block, change)
+        }
+
+        blocks = [block]
+        selectedBlockID = block.id
+        appearance = .system
+        language = .system
+        loginItemError = nil
+
+        persistBlocks()
+        onStructureChange?()
+        onAppearanceChange?()
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String { return Int(value) }
+        return nil
+    }
+
+    /// 判断一个块对象是否包含至少一个已知内容字段。
+    private static func hasRecognizedBlockContent(_ dict: [String: Any]) -> Bool {
+        let keys = [
+            "text", "prefix", "suffix", "fontFamily", "colorEntries",
+            "history", "rotationItems", "datePattern",
+        ]
+        return keys.contains { key in
+            guard let value = dict[key] else { return false }
+            return !(value is NSNull)
+        }
     }
 
     // MARK: - 回调（由状态栏 / 轮播控制器设置）
@@ -799,6 +1078,15 @@ enum RotationOrder: String, CaseIterable, Identifiable, Codable {
 struct RotationItem: Identifiable, Codable, Equatable {
     var id = UUID()
     var text: String
+}
+
+extension RotationItem {
+    /// 缺失字段时使用默认值，避免单条轮播数据损坏影响整块导入。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        text = (try? c.decode(String.self, forKey: .text)) ?? ""
+    }
 }
 
 extension NSColor {

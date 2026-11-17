@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 
 /// 通用页：主题 / 语言 / 开机自启（默认 Tab）
 struct GeneralSettingsView: View {
@@ -58,6 +59,28 @@ struct GeneralSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            Section(s.groupBackup) {
+                HStack(spacing: 8) {
+                    Button(s.exportSettings) {
+                        exportSettings()
+                    }
+                    Button(s.importSettings) {
+                        importSettings()
+                    }
+                    Spacer()
+                }
+                Button(role: .destructive) {
+                    resetSettings()
+                } label: {
+                    Text(s.resetSettings)
+                }
+                Text(s.dataVersion(AppSettings.dataVersion))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(s.backupHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .padding(.top, 12)
@@ -65,6 +88,125 @@ struct GeneralSettingsView: View {
             // 从系统设置批准/拒绝登录项后返回，重新读取真实状态
             settings.refreshLoginItemState()
         }
+    }
+
+    // MARK: - 备份与恢复
+
+    private func exportSettings() {
+        let s = settings.strings
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = Self.backupFileName()
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            let data = try settings.exportBackupData()
+            try data.write(to: url, options: .atomic)
+            showAlert(title: s.exportDoneTitle,
+                      message: s.exportDoneMessage(url.lastPathComponent))
+        } catch {
+            showAlert(title: s.exportFailedTitle,
+                      message: error.localizedDescription,
+                      style: .warning)
+        }
+    }
+
+    private func importSettings() {
+        let s = settings.strings
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            showAlert(title: s.importFailedTitle,
+                      message: s.importInvalidFile,
+                      style: .warning)
+            return
+        }
+
+        do {
+            let preview = try settings.decodeBackup(data)
+            var notes: [String] = []
+            if preview.droppedBlocks > 0 {
+                notes.append(s.importDropped(preview.droppedBlocks))
+            }
+            if preview.schemaVersion > AppSettings.dataVersion {
+                notes.append(s.importFutureVersion(preview.schemaVersion, AppSettings.dataVersion))
+            }
+            let message = ([s.importConfirmMessage(
+                preview.blocks.count,
+                preview.schemaVersion == 0 ? s.legacyDataVersion : "\(preview.schemaVersion)")] + notes)
+                .joined(separator: "\n")
+            guard confirm(title: s.importConfirmTitle,
+                          message: message,
+                          confirmTitle: s.importSettings) else { return }
+
+            let result = settings.applyBackup(preview)
+            let done = settings.strings
+            var doneNotes: [String] = []
+            if result.droppedBlocks > 0 {
+                doneNotes.append(done.importDropped(result.droppedBlocks))
+            }
+            if result.schemaVersion > AppSettings.dataVersion {
+                doneNotes.append(done.importFutureVersion(result.schemaVersion, AppSettings.dataVersion))
+            }
+            showAlert(title: done.importDoneTitle,
+                      message: ([done.importDoneMessage(result.importedBlocks)] + doneNotes)
+                        .joined(separator: "\n"))
+        } catch {
+            showAlert(title: s.importFailedTitle,
+                      message: s.importInvalidFile,
+                      style: .warning)
+        }
+    }
+
+    private func resetSettings() {
+        let s = settings.strings
+        guard confirm(title: s.resetConfirmTitle,
+                      message: s.resetConfirmMessage,
+                      confirmTitle: s.resetConfirmButton) else { return }
+        settings.resetToDefaults()
+        let done = settings.strings
+        showAlert(title: done.resetDoneTitle, message: done.resetDoneMessage)
+    }
+
+    private func showAlert(title: String, message: String,
+                           style: NSAlert.Style = .informational) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = style
+        alert.addButton(withTitle: settings.strings.ok)
+        alert.runModal()
+    }
+
+    private func confirm(title: String, message: String,
+                         confirmTitle: String) -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: confirmTitle)
+        alert.addButton(withTitle: settings.strings.cancel)
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private static func backupFileName() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "SwiftQuote-Settings-\(formatter.string(from: Date())).json"
     }
 }
 

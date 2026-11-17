@@ -110,6 +110,58 @@ struct L {
     var openLoginItems: String {
         t("打开登录项设置", "Open Login Items Settings")
     }
+
+    // MARK: 备份与恢复
+    var groupBackup: String { t("备份与恢复", "Backup & Restore") }
+    var exportSettings: String { t("导出设置…", "Export Settings…") }
+    var importSettings: String { t("导入设置…", "Import Settings…") }
+    var resetSettings: String { t("恢复默认…", "Reset to Default…") }
+    var cancel: String { t("取消", "Cancel") }
+    var ok: String { t("好", "OK") }
+    func dataVersion(_ version: Int) -> String {
+        t("数据版本 \(version)", "Data Version \(version)")
+    }
+    var legacyDataVersion: String { t("旧格式（无版本号）", "Legacy (no version)") }
+    var backupHint: String {
+        t("JSON 备份包含所有菜单栏块及外观/语言设置；开机自启在可用时会随备份恢复。导入会替换当前全部设置。",
+          "JSON backups include all menu bar blocks plus appearance/language. Launch at Login is restored when available. Import replaces all current settings.")
+    }
+    var exportDoneTitle: String { t("已导出设置", "Settings Exported") }
+    func exportDoneMessage(_ filename: String) -> String {
+        t("已保存到 \(filename)。", "Saved to \(filename).")
+    }
+    var exportFailedTitle: String { t("导出失败", "Export Failed") }
+    var importFailedTitle: String { t("导入失败", "Import Failed") }
+    var importInvalidFile: String {
+        t("无法读取该文件，请确认它是 SwiftQuote 导出的 JSON 备份。",
+          "Could not read this file. Make sure it is a SwiftQuote JSON backup.")
+    }
+    var importConfirmTitle: String { t("导入设置？", "Import Settings?") }
+    func importConfirmMessage(_ count: Int, _ version: String) -> String {
+        t("将导入 \(count) 个菜单栏块，并替换当前全部设置。\n数据版本：\(version)\n此操作不可撤销。",
+          "This will import \(count) menu bar block(s) and replace all current settings.\nData version: \(version)\nThis cannot be undone.")
+    }
+    func importDropped(_ count: Int) -> String {
+        t("已丢弃 \(count) 个无法识别的块。",
+          "\(count) unrecognized block(s) discarded.")
+    }
+    func importFutureVersion(_ file: Int, _ current: Int) -> String {
+        t("文件版本 \(file) 高于当前支持的 \(current)，未知或不支持的字段会被忽略。",
+          "File version \(file) is newer than supported version \(current); unknown or unsupported fields will be ignored.")
+    }
+    var importDoneTitle: String { t("已导入设置", "Settings Imported") }
+    func importDoneMessage(_ count: Int) -> String {
+        t("已导入 \(count) 个菜单栏块。", "Imported \(count) menu bar block(s).")
+    }
+    var resetConfirmTitle: String { t("恢复默认设置？", "Reset to Defaults?") }
+    var resetConfirmMessage: String {
+        t("将删除所有菜单栏块、颜色、历史、轮播和日期设置，并恢复默认。\n不会修改系统「开机自启」状态。\n此操作不可撤销。",
+          "This will delete all blocks, colors, history, rotation, and date settings and restore defaults.\nLaunch at Login is not changed.\nThis cannot be undone.")
+    }
+    var resetConfirmButton: String { t("恢复默认", "Reset") }
+    var resetDoneTitle: String { t("已恢复默认", "Reset Complete") }
+    var resetDoneMessage: String { t("所有设置已恢复默认。", "All settings have been reset to defaults.") }
+
     var menuAbout: String     { t("关于", "About") }
     var menuRestart: String   { t("重启", "Restart") }
     var aboutTitle: String    { t("关于 SwiftQuote", "About SwiftQuote") }

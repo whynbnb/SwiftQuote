@@ -46,6 +46,7 @@
 - **Text rotation** — group multiple texts and rotate through them every 30s / 1m / 5m / 1h, sequentially or randomly; pause, resume, or skip to the next item from the menu
 - **History** — keeps the last 10 entries, quick-apply from the menu or settings; the current text is kept out of the list and each entry can be deleted individually
 - **Appearance** — System / Light / Dark mode
+- **Backup & restore** — export all blocks and global settings (including Launch at Login when available) to versioned JSON, import with forward/backward-compatible decoding (unsupported blocks are discarded safely), and reset everything to defaults
 - **Localization** — System / 中文 / English UI
 - **Launch at login** — built with SMAppService (requires running as a bundled app)
 - **Lightweight** — ~13 MB baseline memory; windows release their view trees on close, and a built-in **Restart** menu item reclaims memory from long sessions
@@ -72,8 +73,9 @@ Or open `SwiftQuote.xcodeproj` in Xcode and run (the project is generated from `
 - **⌘-drag** menu bar blocks to rearrange them; positions are saved per block
 - **Dynamic date/time** is configured per block in the **Text** tab. The pattern follows [Unicode TR35](https://unicode.org/reports/tr35/tr35-dates.html#Date_Format_Patterns) and uses the system language/time zone. For example `MM-dd[EEE]HH:mm` with suffix ` ` gives the clock-style item; quick-pattern buttons set common formats
 - **Left-click Opens Calendar** can be enabled per block (also available from the menu). When enabled, left-click opens Calendar and right-click opens the app menu; turn it off to restore left-click menu / right-click edit
+- **Backup & restore** lives in the **General** tab. Exported JSON carries a data version and all blocks; importing replaces current settings. Missing fields use defaults, unknown fields are ignored, and unrecognized blocks are dropped individually. Import restores Launch at Login when available; Reset restores defaults but leaves the system Launch at Login state unchanged
 - **Left-click** for the menu: Input…, Settings…, track history toggle, launch-at-login toggle, recent history (up to 5), rotation controls when enabled (Next / Pause), About (with version), Restart, Quit
-- Settings has six tabs: **General** (theme, language & startup), **Blocks** (add/delete/select menu bar blocks), **Text** (content, prefix/suffix, font family, size, bold, dynamic date/time, presets for the current block), **Colors** (per-character colors, adaptive menu bar palettes), **Rotation** (group texts, interval/order, enable, pause/next; disabled in date/time mode), **History** (current text shown separately; delete entries individually)
+- Settings has six tabs: **General** (theme, language, startup, backup & restore), **Blocks** (add/delete/select menu bar blocks), **Text** (content, prefix/suffix, font family, size, bold, dynamic date/time, presets for the current block), **Colors** (per-character colors, adaptive menu bar palettes), **Rotation** (group texts, interval/order, enable, pause/next; disabled in date/time mode), **History** (current text shown separately; delete entries individually)
 
 ## License
 
