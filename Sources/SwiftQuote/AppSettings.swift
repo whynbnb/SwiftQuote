@@ -47,6 +47,17 @@ final class AppSettings: ObservableObject {
     @Published var bold: Bool {
         didSet { UserDefaults.standard.set(bold, forKey: "bold"); onDisplayChange?() }
     }
+    /// 自定义字体族；nil = 系统默认
+    @Published var fontFamily: String? {
+        didSet {
+            if let fontFamily {
+                UserDefaults.standard.set(fontFamily, forKey: "fontFamily")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "fontFamily")
+            }
+            onDisplayChange?()
+        }
+    }
     /// 每个字符一个颜色，不足时循环使用
     @Published var colorEntries: [ColorEntry] {
         didSet {
@@ -199,6 +210,9 @@ final class AppSettings: ObservableObject {
         // 菜单栏高度约 24pt，字号上限压到 21，避免上下被裁切；同时兜底旧数据中的越界值。
         fontSize = min(max(d.object(forKey: "fontSize") as? Double ?? 13, 9), 21)
         bold = d.object(forKey: "bold") as? Bool ?? true
+        // 字体族：只接受当前系统仍可用的字体，否则回退系统默认
+        let storedFamily = d.string(forKey: "fontFamily")
+        fontFamily = storedFamily.flatMap { Self.availableFontFamilies.contains($0) ? $0 : nil }
         if let data = d.data(forKey: "colorEntries"),
            let decoded = try? JSONDecoder().decode([ColorEntry].self, from: data),
            !decoded.isEmpty {
@@ -326,9 +340,34 @@ final class AppSettings: ObservableObject {
 
     var displayText: String { prefix + text + suffix }
 
-    var font: NSFont {
-        bold ? .boldSystemFont(ofSize: fontSize) : .systemFont(ofSize: fontSize)
+    /// 所有可选字体族（去掉隐藏字体/“System Font”；系统默认单独作为 nil 选项）
+    static let availableFontFamilies: [String] = NSFontManager.shared.availableFontFamilies
+        .filter { !$0.hasPrefix(".") && $0 != "System Font" }
+        .sorted()
+
+    /// 按当前字体族/粗体/字号解析实际字体；字体不可用时回退系统字体。
+    func resolvedFont(size: CGFloat) -> NSFont {
+        if let fontFamily {
+            let traits: NSFontTraitMask = bold ? [.boldFontMask] : []
+            if let custom = NSFontManager.shared.font(withFamily: fontFamily,
+                                                      traits: traits,
+                                                      weight: 5,
+                                                      size: size) {
+                return custom
+            }
+            // 字体族没有独立粗体时，退回同族常规字重并尝试合成粗体
+            if bold,
+               let regular = NSFontManager.shared.font(withFamily: fontFamily,
+                                                       traits: [],
+                                                       weight: 5,
+                                                       size: size) {
+                return NSFontManager.shared.convert(regular, toHaveTrait: .boldFontMask)
+            }
+        }
+        return bold ? .boldSystemFont(ofSize: size) : .systemFont(ofSize: size)
     }
+
+    var font: NSFont { resolvedFont(size: fontSize) }
 
     var nsColors: [NSColor] {
         colorEntries.compactMap { NSColor(hex: $0.hex) }

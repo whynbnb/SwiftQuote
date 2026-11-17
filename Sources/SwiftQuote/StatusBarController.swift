@@ -76,11 +76,12 @@ final class StatusBarController: NSObject, ObservableObject {
         let str = NSMutableAttributedString()
         let colors = settings.effectiveNSColors
         let full = settings.displayText
+        let font = settings.font
         for (i, ch) in full.enumerated() {
             let color = colors.isEmpty ? .white : colors[i % colors.count]
             str.append(NSAttributedString(
                 string: String(ch),
-                attributes: [.font: settings.font, .foregroundColor: color]))
+                attributes: [.font: font, .foregroundColor: color]))
         }
         // 紧凑布局：长度 = 文字实际宽度（cell 内部零补白；剩余间距是系统项间距）。
         // 同时保证一个最小宽度：内容全部清空时仍保留可点击区域，不会把入口弄丢。

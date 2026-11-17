@@ -43,6 +43,8 @@ struct L {
     var prefix: String      { t("前缀", "Prefix") }
     var suffix: String      { t("后缀", "Suffix") }
     var bold: String        { t("加粗", "Bold") }
+    var fontFamily: String  { t("字体", "Font") }
+    var systemDefault: String { t("系统默认", "System Default") }
     var fontSize: String    { t("文字大小", "Font Size") }
     var maxWidth: String    { t("最大宽度", "Max Width") }
     var groupAppearance: String { t("主题", "Appearance") }

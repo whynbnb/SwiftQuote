@@ -54,7 +54,7 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
         textField.isBezeled = false
         textField.drawsBackground = false
         textField.focusRingType = .none
-        textField.font = .systemFont(ofSize: 14)
+        textField.font = settings.resolvedFont(size: 14)
         textField.delegate = self
         textField.translatesAutoresizingMaskIntoConstraints = false
         bg.addSubview(textField)

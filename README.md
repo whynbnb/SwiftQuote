@@ -37,6 +37,7 @@
 
 - **Custom text in the menu bar** — left-click for the menu, right-click to edit instantly
 - **Rich styling** — prefix/suffix, font size, bold, per-character colors (multiple colors cycle through characters), max width limit
+- **Custom font** — choose any installed font family, or keep the system default
 - **Adaptive colors** — maintain separate palettes for light/dark menu bars; colors switch automatically as the menu bar appearance changes (with a reset-to-default button)
 - **Text presets** — one-click templates like "Aloha!", "Do not disturb", "Coffee"
 - **Text rotation** — group multiple texts and rotate through them every 30s / 1m / 5m / 1h, sequentially or randomly; pause, resume, or skip to the next item from the menu
@@ -66,7 +67,7 @@ Or open `SwiftQuote.xcodeproj` in Xcode and run (the project is generated from `
 
 - **Right-click** the menu bar text to edit it in place (`⏎` to apply, `Esc` to cancel); recent history is shown below the field — click an entry to apply it, or use the × button to delete it
 - **Left-click** for the menu: Input…, Settings…, track history toggle, launch-at-login toggle, recent history (up to 5), rotation controls when enabled (Next / Pause), About (with version), Restart, Quit
-- Settings has five tabs: **General** (theme, language & startup), **Text** (content, prefix/suffix, font, presets), **Colors** (per-character colors, adaptive menu bar palettes), **Rotation** (group texts, interval/order, enable, pause/next), **History** (current text shown separately; delete entries individually)
+- Settings has five tabs: **General** (theme, language & startup), **Text** (content, prefix/suffix, font family, size, bold, presets), **Colors** (per-character colors, adaptive menu bar palettes), **Rotation** (group texts, interval/order, enable, pause/next), **History** (current text shown separately; delete entries individually)
 
 ## License
 

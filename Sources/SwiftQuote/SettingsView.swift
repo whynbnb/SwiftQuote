@@ -87,6 +87,19 @@ struct TextSettingsView: View {
                             onEndEditing: { settings.endTextEditing() })
                         labeledField(s.prefix, text: $settings.prefix)
                         labeledField(s.suffix, text: $settings.suffix)
+                        HStack {
+                            Text(s.fontFamily)
+                                .frame(width: 60, alignment: .trailing)
+                            Picker("", selection: $settings.fontFamily) {
+                                Text(s.systemDefault).tag(String?.none)
+                                ForEach(AppSettings.availableFontFamilies, id: \.self) { family in
+                                    Text(family).tag(Optional(family))
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         Toggle(s.bold, isOn: $settings.bold)
                         HStack {
                             Text(s.fontSize)
@@ -113,6 +126,7 @@ struct TextSettingsView: View {
                                 Text(preset.name(isChinese))
                                 Spacer()
                                 Text(preset.prefix + preset.text(isChinese) + preset.suffix)
+                                    .font(settings.swiftUIFont(size: 13))
                                     .foregroundStyle(.secondary)
                                 Button(s.apply) {
                                     settings.prefix = preset.prefix
@@ -205,7 +219,7 @@ struct ColorsSettingsView: View {
             let full = settings.displayText
             ForEach(Array(full.enumerated()), id: \.offset) { i, ch in
                 Text(String(ch))
-                    .font(.system(size: settings.fontSize, weight: settings.bold ? .bold : .regular))
+                    .font(settings.swiftUIFont(size: settings.fontSize))
                     .foregroundStyle(colors.isEmpty ? Color.white : Color(nsColor: colors[i % colors.count]))
             }
         }
@@ -340,6 +354,7 @@ struct RotationSettingsView: View {
                         HStack(spacing: 8) {
                             TextField(s.rotationItemPlaceholder, text: $item.text)
                                 .textFieldStyle(.roundedBorder)
+                                .font(settings.swiftUIFont(size: 13))
                             if item.text == settings.text && !item.text.isEmpty {
                                 Text(s.current)
                                     .font(.caption2)
@@ -440,5 +455,15 @@ struct HistorySettingsView: View {
             }
         }
         .padding()
+    }
+}
+
+private extension AppSettings {
+    /// SwiftUI 侧的字体：系统默认走 .system，自定义字体族用其 PostScript 名。
+    func swiftUIFont(size: CGFloat) -> Font {
+        if fontFamily != nil {
+            return .custom(resolvedFont(size: size).fontName, size: size)
+        }
+        return .system(size: size, weight: bold ? .bold : .regular)
     }
 }
