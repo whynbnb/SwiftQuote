@@ -19,9 +19,12 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        // 关闭后释放控制器与视图树（异步避免在 delegate 回调中自释放）
-        DispatchQueue.main.async {
-            StatusBarController.shared.aboutWindowDidClose()
+        // 关闭后异步释放（避免在 delegate 回调中自释放）。
+        // 若窗口在回调执行前又被重新打开，则保留控制器，避免把正在显示的窗口释放掉。
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.window?.isVisible != true else { return }
+            StatusBarController.shared.aboutWindowDidClose(self)
         }
     }
 }

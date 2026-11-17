@@ -51,7 +51,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.contentViewController = tabController
         window.center()
         // 注：ARC 下不要设 isReleasedWhenClosed（官方标注仅对非 ARC 有用，易双重释放）。
-        // 窗口在关闭时由 settingsWindowDidClose() 置空控制器后交给 ARC 释放。
+        // 窗口在关闭时由 settingsWindowDidClose(_:) 置空控制器后交给 ARC 释放。
 
         super.init(window: window)
         window.delegate = self
@@ -86,9 +86,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        // 通知 StatusBarController 释放本控制器（异步避免在 delegate 回调中自释放）
-        DispatchQueue.main.async {
-            StatusBarController.shared.settingsWindowDidClose()
+        // 关闭后异步释放（避免在 delegate 回调中自释放）。
+        // 若窗口在回调执行前又被重新打开，则保留控制器，避免把正在显示的窗口释放掉。
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.window?.isVisible != true else { return }
+            StatusBarController.shared.settingsWindowDidClose(self)
         }
     }
 }

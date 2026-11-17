@@ -259,12 +259,17 @@ final class StatusBarController: NSObject, ObservableObject {
     }
 
     // MARK: - 设置窗口
-    func settingsWindowDidClose() {
-        settingsWindowController = nil   // 释放窗口与视图树
+    func settingsWindowDidClose(_ controller: SettingsWindowController) {
+        // 只有当前仍由该控制器持有时才释放，避免旧窗口的延迟回调清掉新窗口
+        if settingsWindowController === controller {
+            settingsWindowController = nil   // 释放窗口与视图树
+        }
     }
 
-    func aboutWindowDidClose() {
-        aboutWindowController = nil
+    func aboutWindowDidClose(_ controller: AboutWindowController) {
+        if aboutWindowController === controller {
+            aboutWindowController = nil
+        }
     }
 
     /// 把主题外观应用到本 App 自己的窗口。
