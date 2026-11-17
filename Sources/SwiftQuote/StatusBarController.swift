@@ -109,7 +109,11 @@ final class StatusBarController: NSObject, ObservableObject {
 
     @objc private func onClick(_ sender: NSStatusBarButton) {
         guard let event = NSApp.currentEvent else { return }
-        if event.type == .rightMouseUp {
+        // 右键，或 Ctrl+单击（macOS 上等价于右键）→ 编辑面板；其余 → 菜单
+        let isRightClick = event.type == .rightMouseUp
+        let isControlClick = event.type == .leftMouseUp
+            && event.modifierFlags.contains(.control)
+        if isRightClick || isControlClick {
             showInputPanel()
         } else {
             showMenu()
