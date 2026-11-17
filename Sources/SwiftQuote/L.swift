@@ -89,4 +89,26 @@ struct L {
     var noHistory: String { t("暂无历史记录", "No history yet") }
     var current: String   { t("当前", "Current") }
     var deleteHistoryItem: String { t("删除该记录", "Delete") }
+
+    // MARK: 轮播
+    var tabRotation: String { t("轮播", "Rotation") }
+    var rotationEnabled: String { t("启用轮播", "Enable Rotation") }
+    var rotationInterval: String { t("切换间隔", "Interval") }
+    var rotationOrder: String { t("顺序", "Order") }
+    var rotationSequential: String { t("顺序", "Sequential") }
+    var rotationRandom: String { t("随机", "Random") }
+    var rotationAddCurrent: String { t("添加当前", "Add Current") }
+    var rotationAddItem: String { t("添加条目", "Add Item") }
+    var rotationItemPlaceholder: String { t("文字", "Text") }
+    var rotationEmpty: String {
+        t("暂无条目，添加两条以上即可开始轮播",
+          "No items yet. Add at least two to start rotating.")
+    }
+    var rotationNeedsTwo: String {
+        t("至少需要 2 条非空文字才会开始轮播",
+          "Add at least two non-empty items to start rotating.")
+    }
+    var menuNextItem: String { t("下一条", "Next") }
+    var menuPauseRotation: String { t("暂停轮播", "Pause Rotation") }
+    var menuResumeRotation: String { t("继续轮播", "Resume Rotation") }
 }

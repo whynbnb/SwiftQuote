@@ -212,6 +212,7 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
         makeFirstResponder(textField)
         textField.selectText(nil)
         startMouseMonitors()
+        RotationController.shared.suspend()   // 编辑期间不要自动切换文字
     }
 
     @objc private func onResignKey() {
@@ -233,6 +234,7 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
     private func dismiss() {
         stopMouseMonitors()
         orderOut(nil)
+        RotationController.shared.resume()   // 关闭输入面板后恢复自动切换
         dismissID += 1
         let id = dismissID
         DispatchQueue.main.async { [weak self] in

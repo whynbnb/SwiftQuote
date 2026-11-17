@@ -13,6 +13,7 @@
 		2678AA0B08606D7F13C896FE /* L.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA133459A66835D11F854DC6 /* L.swift */; };
 		4F4CF7B4B6125C548BEAC5B0 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11CD0E0E37B518BFE74F7C7 /* SettingsView.swift */; };
 		6357F139034AFAE14B31D705 /* SingleInstance.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15D8314313C40C4A47725C9 /* SingleInstance.swift */; };
+		66BA487CA7396E47A7C5934A /* RotationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB7E5D6DB6664439EA44988B /* RotationController.swift */; };
 		7FF15E88E35DE5914CEB3FD7 /* NoAutofillTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33899B3AC4CD1995F4F8B5E2 /* NoAutofillTextField.swift */; };
 		9316A51B2181C89DA7C552E9 /* InputPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3EC298DCB72CC3BF92091CF /* InputPanel.swift */; };
 		C2681E5B13F868E2A24134F6 /* AboutWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D997CB975306C8413B7273C /* AboutWindow.swift */; };
@@ -26,6 +27,7 @@
 		33899B3AC4CD1995F4F8B5E2 /* NoAutofillTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoAutofillTextField.swift; sourceTree = "<group>"; };
 		98DA6CC704DB22F1B5B50CB9 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		9D997CB975306C8413B7273C /* AboutWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutWindow.swift; sourceTree = "<group>"; };
+		AB7E5D6DB6664439EA44988B /* RotationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RotationController.swift; sourceTree = "<group>"; };
 		BA133459A66835D11F854DC6 /* L.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L.swift; sourceTree = "<group>"; };
 		BCEB503E576D1011C8CC61CF /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		C10D02F3E6B7332F198DDC76 /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
@@ -69,6 +71,7 @@
 				BA133459A66835D11F854DC6 /* L.swift */,
 				98DA6CC704DB22F1B5B50CB9 /* main.swift */,
 				33899B3AC4CD1995F4F8B5E2 /* NoAutofillTextField.swift */,
+				AB7E5D6DB6664439EA44988B /* RotationController.swift */,
 				F11CD0E0E37B518BFE74F7C7 /* SettingsView.swift */,
 				C10D02F3E6B7332F198DDC76 /* SettingsWindowController.swift */,
 				C15D8314313C40C4A47725C9 /* SingleInstance.swift */,
@@ -151,6 +154,7 @@
 				9316A51B2181C89DA7C552E9 /* InputPanel.swift in Sources */,
 				2678AA0B08606D7F13C896FE /* L.swift in Sources */,
 				7FF15E88E35DE5914CEB3FD7 /* NoAutofillTextField.swift in Sources */,
+				66BA487CA7396E47A7C5934A /* RotationController.swift in Sources */,
 				4F4CF7B4B6125C548BEAC5B0 /* SettingsView.swift in Sources */,
 				0D3D21E327AC67EAFF0885ED /* SettingsWindowController.swift in Sources */,
 				6357F139034AFAE14B31D705 /* SingleInstance.swift in Sources */,

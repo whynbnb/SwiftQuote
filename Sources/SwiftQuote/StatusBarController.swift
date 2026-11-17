@@ -150,6 +150,11 @@ final class StatusBarController: NSObject, ObservableObject {
             historyHeaderMenu(menu, items: Array(displayHistory.prefix(5)))
         }
 
+        if settings.rotationEnabled && settings.activeRotationItems.count > 1 {
+            menu.addItem(.separator())
+            rotationMenu(menu)
+        }
+
         menu.addItem(.separator())
         // 关于（打包 App 时附上版本号）
         let aboutTitle: String
@@ -188,6 +193,29 @@ final class StatusBarController: NSObject, ObservableObject {
         let clear = NSMenuItem(title: settings.strings.clearHistory, action: #selector(onClearHistory), keyEquivalent: "")
         clear.target = self
         menu.addItem(clear)
+    }
+
+    private func rotationMenu(_ menu: NSMenu) {
+        let s = settings.strings
+        let next = NSMenuItem(title: s.menuNextItem,
+                              action: #selector(onNextRotationItem),
+                              keyEquivalent: "")
+        next.target = self
+        menu.addItem(next)
+
+        let pause = NSMenuItem(title: settings.rotationPaused ? s.menuResumeRotation : s.menuPauseRotation,
+                               action: #selector(onToggleRotationPause),
+                               keyEquivalent: "")
+        pause.target = self
+        menu.addItem(pause)
+    }
+
+    @objc private func onNextRotationItem() {
+        RotationController.shared.nextManually()
+    }
+
+    @objc private func onToggleRotationPause() {
+        RotationController.shared.togglePause()
     }
 
     @objc private func onHistoryItem(_ sender: NSMenuItem) {

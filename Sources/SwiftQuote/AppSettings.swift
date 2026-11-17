@@ -91,6 +91,44 @@ final class AppSettings: ObservableObject {
         didSet { UserDefaults.standard.set(language.rawValue, forKey: "appLanguage") }
     }
 
+    // MARK: - 轮播
+
+    @Published var rotationEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(rotationEnabled, forKey: "rotationEnabled")
+            if rotationPaused {
+                rotationPaused = false   // 切换启用状态时清除暂停
+            }
+            onRotationSettingsChange?()
+        }
+    }
+    @Published var rotationPaused: Bool {
+        didSet {
+            UserDefaults.standard.set(rotationPaused, forKey: "rotationPaused")
+            onRotationSettingsChange?()
+        }
+    }
+    @Published var rotationInterval: RotationInterval {
+        didSet {
+            UserDefaults.standard.set(rotationInterval.rawValue, forKey: "rotationInterval")
+            onRotationSettingsChange?()
+        }
+    }
+    @Published var rotationOrder: RotationOrder {
+        didSet {
+            UserDefaults.standard.set(rotationOrder.rawValue, forKey: "rotationOrder")
+            onRotationSettingsChange?()
+        }
+    }
+    @Published var rotationItems: [RotationItem] {
+        didSet {
+            if let data = try? JSONEncoder().encode(rotationItems) {
+                UserDefaults.standard.set(data, forKey: "rotationItems")
+            }
+            onRotationSettingsChange?()
+        }
+    }
+
     /// 设置页输入框实时编辑时置位：更新当前文字但不写历史，避免逐字污染历史。
     private var suppressHistory = false
 
@@ -104,7 +142,11 @@ final class AppSettings: ObservableObject {
     /// 设置页「内容」输入框开始编辑时记录基线。
     private var textEditBaseline: String?
 
+    /// 设置页正文输入框是否正在编辑：轮播定时器据此跳过，避免打断输入。
+    private(set) var isEditingText = false
+
     func beginTextEditing() {
+        isEditingText = true
         guard textEditBaseline == nil else { return }
         textEditBaseline = text
     }
@@ -112,6 +154,7 @@ final class AppSettings: ObservableObject {
     /// 输入框失焦 / 设置窗口关闭时，把“开始编辑前的当前值”补记一次历史。
     /// 逐字输入期间仍不写历史，避免半截输入污染列表。
     func endTextEditing() {
+        isEditingText = false
         guard let baseline = textEditBaseline else { return }
         textEditBaseline = nil
         guard !suppressHistory, trackHistory, !baseline.isEmpty, baseline != text else { return }
@@ -122,6 +165,23 @@ final class AppSettings: ObservableObject {
 
     /// 用于展示的历史列表：始终排除当前值。
     var displayHistory: [String] { history.filter { $0 != text } }
+
+    /// 轮播实际参与切换的条目：过滤空白项，并按文字去重。
+    var activeRotationItems: [RotationItem] {
+        var seen = Set<String>()
+        return rotationItems.filter { item in
+            let value = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { return false }
+            return seen.insert(item.text).inserted
+        }
+    }
+
+    /// 把当前文字加入轮播组（已存在或为空则忽略）。
+    func addCurrentTextToRotation() {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !rotationItems.contains(where: { $0.text == text }) else { return }
+        rotationItems.append(RotationItem(text: text))
+    }
 
     /// 删除某一条历史。
     func removeHistory(_ value: String) {
@@ -166,6 +226,17 @@ final class AppSettings: ObservableObject {
         darkBarColorEntries = loadEntries("darkBarColorEntries", fallback: [ColorEntry(hex: "#FFFFFF")])
         appearance = AppAppearance(rawValue: d.string(forKey: "appearance") ?? "") ?? .system
         language = AppLanguage(rawValue: d.string(forKey: "appLanguage") ?? "") ?? .system
+
+        rotationEnabled = d.object(forKey: "rotationEnabled") as? Bool ?? false
+        rotationPaused = d.object(forKey: "rotationPaused") as? Bool ?? false
+        rotationInterval = RotationInterval(rawValue: d.string(forKey: "rotationInterval") ?? "") ?? .oneMinute
+        rotationOrder = RotationOrder(rawValue: d.string(forKey: "rotationOrder") ?? "") ?? .sequential
+        if let data = d.data(forKey: "rotationItems"),
+           let decoded = try? JSONDecoder().decode([RotationItem].self, from: data) {
+            rotationItems = decoded
+        } else {
+            rotationItems = []
+        }
     }
 
     // MARK: - 开机自启（SMAppService；裸跑 SwiftPM 可执行文件时不可用）
@@ -237,6 +308,9 @@ final class AppSettings: ObservableObject {
 
     /// 主题外观变化时的回调（由 StatusBarController 设置，用于更新已打开的窗口）
     var onAppearanceChange: (() -> Void)?
+
+    /// 轮播配置变化时的回调（由 RotationController 设置）
+    var onRotationSettingsChange: (() -> Void)?
 
     var isChinese: Bool {
         switch language {
@@ -333,6 +407,43 @@ struct Preset: Identifiable {
               textEn: "",
               prefix: "「", suffix: "」"),
     ]
+}
+
+// MARK: - 轮播模型
+
+enum RotationInterval: String, CaseIterable, Identifiable {
+    case thirtySeconds, oneMinute, fiveMinutes, oneHour
+
+    var id: String { rawValue }
+
+    var seconds: TimeInterval {
+        switch self {
+        case .thirtySeconds: return 30
+        case .oneMinute:     return 60
+        case .fiveMinutes:   return 300
+        case .oneHour:       return 3600
+        }
+    }
+
+    func label(_ isChinese: Bool) -> String {
+        switch self {
+        case .thirtySeconds: return isChinese ? "30 秒" : "30s"
+        case .oneMinute:     return isChinese ? "1 分钟" : "1m"
+        case .fiveMinutes:   return isChinese ? "5 分钟" : "5m"
+        case .oneHour:       return isChinese ? "1 小时" : "1h"
+        }
+    }
+}
+
+enum RotationOrder: String, CaseIterable, Identifiable {
+    case sequential, random
+
+    var id: String { rawValue }
+}
+
+struct RotationItem: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var text: String
 }
 
 extension NSColor {

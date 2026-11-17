@@ -267,6 +267,109 @@ private struct ColorListEditor: View {
     }
 }
 
+/// 轮播页：一组文字按间隔顺序/随机切换
+struct RotationSettingsView: View {
+    @EnvironmentObject var settings: AppSettings
+
+    var body: some View {
+        let s = settings.strings
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(s.rotationEnabled, isOn: $settings.rotationEnabled)
+
+            HStack {
+                Text(s.rotationInterval)
+                    .frame(width: 60, alignment: .trailing)
+                Picker("", selection: $settings.rotationInterval) {
+                    ForEach(RotationInterval.allCases) { interval in
+                        Text(interval.label(settings.isChinese)).tag(interval)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            HStack {
+                Text(s.rotationOrder)
+                    .frame(width: 60, alignment: .trailing)
+                Picker("", selection: $settings.rotationOrder) {
+                    Text(s.rotationSequential).tag(RotationOrder.sequential)
+                    Text(s.rotationRandom).tag(RotationOrder.random)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            HStack(spacing: 8) {
+                Button(s.rotationAddCurrent) {
+                    settings.addCurrentTextToRotation()
+                }
+                .disabled(settings.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          || settings.rotationItems.contains { $0.text == settings.text })
+
+                Button(s.rotationAddItem) {
+                    settings.rotationItems.append(RotationItem(text: ""))
+                }
+
+                Spacer()
+
+                Button(s.menuNextItem) {
+                    RotationController.shared.nextManually()
+                }
+                .disabled(!settings.rotationEnabled || settings.activeRotationItems.count < 2)
+
+                Button(settings.rotationPaused ? s.menuResumeRotation : s.menuPauseRotation) {
+                    RotationController.shared.togglePause()
+                }
+                .disabled(!settings.rotationEnabled)
+            }
+            .controlSize(.small)
+
+            if settings.rotationItems.isEmpty {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Text(s.rotationEmpty)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                Spacer()
+            } else {
+                List {
+                    ForEach($settings.rotationItems) { $item in
+                        HStack(spacing: 8) {
+                            TextField(s.rotationItemPlaceholder, text: $item.text)
+                                .textFieldStyle(.roundedBorder)
+                            if item.text == settings.text && !item.text.isEmpty {
+                                Text(s.current)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button {
+                                settings.rotationItems.removeAll { $0.id == item.id }
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(.red)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .onMove { settings.rotationItems.move(fromOffsets: $0, toOffset: $1) }
+                    .onDelete { settings.rotationItems.remove(atOffsets: $0) }
+                }
+                .listStyle(.inset)
+            }
+
+            if !settings.rotationItems.isEmpty && settings.activeRotationItems.count < 2 {
+                Text(s.rotationNeedsTwo)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+    }
+}
+
 /// 历史记录页：查看、应用、删除单条、清空
 struct HistorySettingsView: View {
     @EnvironmentObject var settings: AppSettings

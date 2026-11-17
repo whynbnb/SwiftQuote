@@ -23,12 +23,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             { makeHosting(GeneralSettingsView()) },
             { makeHosting(TextSettingsView()) },
             { makeHosting(ColorsSettingsView()) },
+            { makeHosting(RotationSettingsView()) },
             { makeHosting(HistorySettingsView()) },
         ]
         let tabInfo: [(String, String)] = [
             (s.tabGeneral, "gearshape"),
             (s.tabText, "textformat"),
             (s.tabColors, "paintpalette"),
+            (s.tabRotation, "arrow.triangle.2.circlepath"),
             (s.tabHistory, "clock"),
         ]
 
@@ -71,6 +73,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 settings.strings.tabGeneral,
                 settings.strings.tabText,
                 settings.strings.tabColors,
+                settings.strings.tabRotation,
                 settings.strings.tabHistory,
             ]
             for (item, label) in zip(self.items, labels) {
