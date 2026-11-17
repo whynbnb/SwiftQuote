@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)   // 纯菜单栏应用，不显示 Dock 图标
         StatusBarController.shared.setup()
         RotationController.shared.start()
+        DateTextController.shared.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

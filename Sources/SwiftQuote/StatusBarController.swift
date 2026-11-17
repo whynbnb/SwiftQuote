@@ -31,6 +31,7 @@ final class StatusBarController: NSObject, ObservableObject {
         settings.onStructureChange = { [weak self] in
             self?.syncStatusItems()
             RotationController.shared.scheduleAll()
+            DateTextController.shared.schedule()
         }
         settings.onAppearanceChange = { [weak self] in self?.applyAppearanceToWindows() }
 
@@ -157,6 +158,18 @@ final class StatusBarController: NSObject, ObservableObject {
         return settings.blocks.first { $0.id == id }
     }
 
+    /// 打开系统日历（Calendar.app）。找不到时静默忽略。
+    private func openCalendar() {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") else {
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: url,
+                                           configuration: configuration,
+                                           completionHandler: nil)
+    }
+
     @objc private func onClick(_ sender: NSStatusBarButton) {
         guard let event = NSApp.currentEvent, let block = block(for: sender) else { return }
         // 右键，或 Ctrl+单击（macOS 上等价于右键）→ 编辑该块；其余 → 菜单
@@ -164,7 +177,14 @@ final class StatusBarController: NSObject, ObservableObject {
         let isControlClick = event.type == .leftMouseUp
             && event.modifierFlags.contains(.control)
         if isRightClick || isControlClick {
-            showInputPanel(block)
+            // 开启「左键打开日历」后，右键改为打开菜单，保证设置入口仍然可用
+            if block.calendarOnLeftClick {
+                showMenu(for: block)
+            } else {
+                showInputPanel(block)
+            }
+        } else if block.calendarOnLeftClick {
+            openCalendar()
         } else {
             showMenu(for: block)
         }
@@ -184,7 +204,9 @@ final class StatusBarController: NSObject, ObservableObject {
             menu.addItem(.separator())
         }
 
-        let input = NSMenuItem(title: s.menuInput, action: #selector(onInput(_:)), keyEquivalent: "")
+        let input = NSMenuItem(title: block.dateEnabled ? s.menuDateFormat : s.menuInput,
+                               action: #selector(onInput(_:)),
+                               keyEquivalent: "")
         input.target = self
         input.representedObject = block.id
         menu.addItem(input)
@@ -193,13 +215,23 @@ final class StatusBarController: NSObject, ObservableObject {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        let historyToggle = NSMenuItem(title: s.trackHistory,
-                                       action: #selector(onToggleHistory(_:)),
-                                       keyEquivalent: "")
-        historyToggle.target = self
-        historyToggle.representedObject = block.id
-        historyToggle.state = block.trackHistory ? .on : .off
-        menu.addItem(historyToggle)
+        if !block.dateEnabled {
+            let historyToggle = NSMenuItem(title: s.trackHistory,
+                                           action: #selector(onToggleHistory(_:)),
+                                           keyEquivalent: "")
+            historyToggle.target = self
+            historyToggle.representedObject = block.id
+            historyToggle.state = block.trackHistory ? .on : .off
+            menu.addItem(historyToggle)
+        }
+
+        let calendarToggle = NSMenuItem(title: s.calendarOnLeftClick,
+                                        action: #selector(onToggleCalendar(_:)),
+                                        keyEquivalent: "")
+        calendarToggle.target = self
+        calendarToggle.representedObject = block.id
+        calendarToggle.state = block.calendarOnLeftClick ? .on : .off
+        menu.addItem(calendarToggle)
 
         let loginToggle = NSMenuItem(title: s.launchAtLogin,
                                      action: #selector(onToggleLogin),
@@ -211,12 +243,12 @@ final class StatusBarController: NSObject, ObservableObject {
 
         // 历史里永远排除当前值（实时编辑后当前值也可能短暂留在底层 history 中）
         let displayHistory = block.displayHistory
-        if block.trackHistory && !displayHistory.isEmpty {
+        if !block.dateEnabled && block.trackHistory && !displayHistory.isEmpty {
             menu.addItem(.separator())
             historyHeaderMenu(menu, block: block, items: Array(displayHistory.prefix(5)))
         }
 
-        if block.rotationEnabled && block.activeRotationItems.count > 1 {
+        if !block.dateEnabled && block.rotationEnabled && block.activeRotationItems.count > 1 {
             menu.addItem(.separator())
             rotationMenu(menu, block: block)
         }
@@ -308,6 +340,11 @@ final class StatusBarController: NSObject, ObservableObject {
     @objc private func onToggleHistory(_ sender: NSMenuItem) {
         guard let block = block(id: sender.representedObject as? UUID) else { return }
         block.trackHistory.toggle()
+    }
+
+    @objc private func onToggleCalendar(_ sender: NSMenuItem) {
+        guard let block = block(id: sender.representedObject as? UUID) else { return }
+        block.calendarOnLeftClick.toggle()
     }
 
     @objc private func onToggleLogin() {

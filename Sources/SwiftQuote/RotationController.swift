@@ -64,6 +64,7 @@ final class RotationController {
     private func schedule(_ block: BlockSettings) {
         cancel(block.id)
         guard !suspended.contains(block.id),
+              !block.dateEnabled,
               block.rotationEnabled,
               !block.rotationPaused,
               block.activeRotationItems.count > 1 else { return }
@@ -85,8 +86,8 @@ final class RotationController {
     @objc private func tick(_ timer: Timer) {
         guard let id = timer.userInfo as? UUID,
               let block = settings.blocks.first(where: { $0.id == id }) else { return }
-        // 用户正在设置页编辑正文时跳过本次，避免打断输入
-        guard !block.isEditingText else { return }
+        // 用户正在设置页编辑正文或已切换为日期时间模式时跳过
+        guard !block.isEditingText, !block.dateEnabled else { return }
         advance(block)
     }
 
@@ -108,5 +109,64 @@ final class RotationController {
         }
 
         block.setTextLive(items[nextIndex].text)
+    }
+}
+
+/// 动态日期时间控制器：所有日期块共用一个 1 秒定时器。
+/// 每秒只对输出真正发生变化的块刷新菜单栏（日期格式没有秒时不会频繁重绘）。
+@MainActor
+final class DateTextController {
+    static let shared = DateTextController()
+
+    private let settings = AppSettings.shared
+    private var timer: Timer?
+    private var lastRendered: [UUID: String] = [:]
+
+    private init() {
+        settings.onDateChange = { [weak self] _ in self?.schedule() }
+    }
+
+    func start() {
+        schedule()
+    }
+
+    /// 根据当前是否有日期块启停共享定时器。
+    func schedule() {
+        let hasDynamic = settings.blocks.contains { $0.dateEnabled }
+        guard hasDynamic else {
+            timer?.invalidate()
+            timer = nil
+            lastRendered.removeAll()
+            return
+        }
+        guard timer == nil else { return }
+
+        let timer = Timer(timeInterval: 1,
+                          target: self,
+                          selector: #selector(tick),
+                          userInfo: nil,
+                          repeats: true)
+        timer.tolerance = 0.1
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    @objc private func tick() {
+        let now = Date()
+        var valid = Set<UUID>()
+        for block in settings.blocks where block.dateEnabled {
+            valid.insert(block.id)
+            let value = block.displayText(at: now)
+            if lastRendered[block.id] != value {
+                lastRendered[block.id] = value
+                settings.onDisplayChange?(block)
+            }
+        }
+        // 清理已删除/已关闭日期模式的块
+        if lastRendered.contains(where: { !valid.contains($0.key) }) {
+            lastRendered = lastRendered.filter { valid.contains($0.key) }
+        }
+        // 所有日期块都关闭后停止定时器（通常 onDateChange 已处理，这里兜底）
+        if valid.isEmpty { schedule() }
     }
 }

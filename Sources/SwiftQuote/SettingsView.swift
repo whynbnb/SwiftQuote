@@ -228,6 +228,79 @@ private struct BlockTextSettingsView: View {
                     .padding(8)
                 }
 
+                GroupBox(s.groupDateTime) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle(s.dynamicDateTime, isOn: $block.dateEnabled)
+
+                        HStack {
+                            Text(s.dateFormat)
+                                .frame(width: 60, alignment: .trailing)
+                            NoAutofillTextFieldView(
+                                placeholder: s.dateFormatPlaceholder,
+                                text: $block.datePattern,
+                                font: .monospacedSystemFont(ofSize: NSFont.systemFontSize,
+                                                           weight: .regular))
+                                .frame(maxWidth: .infinity)
+                        }
+
+                        Text(s.dateFormatHint)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), alignment: .leading)],
+                                  alignment: .leading,
+                                  spacing: 6) {
+                            ForEach(Self.datePatterns, id: \.self) { pattern in
+                                Button(pattern) {
+                                    block.datePattern = pattern
+                                    block.dateEnabled = true
+                                }
+                                .controlSize(.small)
+                            }
+                            Button(s.dateScreenshotPreset) {
+                                block.datePattern = "MM-dd[EEE]HH:mm"
+                                block.prefix = ""
+                                block.suffix = " "
+                                block.dateEnabled = true
+                            }
+                            .controlSize(.small)
+                        }
+
+                        HStack {
+                            Text(s.preview)
+                                .frame(width: 60, alignment: .trailing)
+                            if block.dateEnabled {
+                                TimelineView(.periodic(from: .now, by: 1)) { context in
+                                    Text(block.displayText(at: context.date))
+                                        .font(block.swiftUIFont(size: 13))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            } else {
+                                Text(block.displayText)
+                                    .font(block.swiftUIFont(size: 13))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                        }
+
+                        if block.dateEnabled {
+                            Text(s.dateContentIgnoredHint)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Divider()
+
+                        Toggle(s.calendarOnLeftClick, isOn: $block.calendarOnLeftClick)
+                        Text(s.calendarClickHint)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(8)
+                }
+
                 GroupBox(s.groupPresets) {
                     VStack(spacing: 4) {
                         ForEach(Preset.all) { preset in
@@ -238,6 +311,7 @@ private struct BlockTextSettingsView: View {
                                     .font(block.swiftUIFont(size: 13))
                                     .foregroundStyle(.secondary)
                                 Button(s.apply) {
+                                    block.dateEnabled = false
                                     block.prefix = preset.prefix
                                     block.suffix = preset.suffix
                                     let value = preset.text(isChinese)
@@ -262,6 +336,15 @@ private struct BlockTextSettingsView: View {
             .padding()
         }
     }
+
+    private static let datePatterns = [
+        "MM-dd[EEE]HH:mm",
+        "HH:mm",
+        "HH:mm:ss",
+        "yyyy-MM-dd",
+        "yyyy-MM-dd EEE",
+        "M月d日 EEE",
+    ]
 
     private func labeledField(_ label: String, text: Binding<String>,
                               onBeginEditing: (() -> Void)? = nil,
@@ -428,95 +511,104 @@ private struct BlockRotationSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             BlockPickerRow()
 
-            Toggle(s.rotationEnabled, isOn: $block.rotationEnabled)
+            Group {
+                Toggle(s.rotationEnabled, isOn: $block.rotationEnabled)
 
-            HStack {
-                Text(s.rotationInterval)
-                    .frame(width: 60, alignment: .trailing)
-                Picker("", selection: $block.rotationInterval) {
-                    ForEach(RotationInterval.allCases) { interval in
-                        Text(interval.label(settings.isChinese)).tag(interval)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-            }
-
-            HStack {
-                Text(s.rotationOrder)
-                    .frame(width: 60, alignment: .trailing)
-                Picker("", selection: $block.rotationOrder) {
-                    Text(s.rotationSequential).tag(RotationOrder.sequential)
-                    Text(s.rotationRandom).tag(RotationOrder.random)
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-            }
-
-            HStack(spacing: 8) {
-                Button(s.rotationAddCurrent) {
-                    block.addCurrentTextToRotation()
-                }
-                .disabled(block.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          || block.rotationItems.contains { $0.text == block.text })
-
-                Button(s.rotationAddItem) {
-                    block.rotationItems.append(RotationItem(text: ""))
-                }
-
-                Spacer()
-
-                Button(s.menuNextItem) {
-                    RotationController.shared.nextManually(block: block)
-                }
-                .disabled(!block.rotationEnabled || block.activeRotationItems.count < 2)
-
-                Button(block.rotationPaused ? s.menuResumeRotation : s.menuPauseRotation) {
-                    RotationController.shared.togglePause(block: block)
-                }
-                .disabled(!block.rotationEnabled)
-            }
-            .controlSize(.small)
-
-            if block.rotationItems.isEmpty {
-                Spacer()
                 HStack {
-                    Spacer()
-                    Text(s.rotationEmpty)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    Spacer()
-                }
-                Spacer()
-            } else {
-                List {
-                    ForEach($block.rotationItems) { $item in
-                        HStack(spacing: 8) {
-                            TextField(s.rotationItemPlaceholder, text: $item.text)
-                                .textFieldStyle(.roundedBorder)
-                                .font(block.swiftUIFont(size: 13))
-                            if item.text == block.text && !item.text.isEmpty {
-                                Text(s.current)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Button {
-                                block.rotationItems.removeAll { $0.id == item.id }
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .foregroundStyle(.red)
-                            }
-                            .buttonStyle(.plain)
+                    Text(s.rotationInterval)
+                        .frame(width: 60, alignment: .trailing)
+                    Picker("", selection: $block.rotationInterval) {
+                        ForEach(RotationInterval.allCases) { interval in
+                            Text(interval.label(settings.isChinese)).tag(interval)
                         }
                     }
-                    .onMove { block.rotationItems.move(fromOffsets: $0, toOffset: $1) }
-                    .onDelete { block.rotationItems.remove(atOffsets: $0) }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
                 }
-                .listStyle(.inset)
-            }
 
-            if !block.rotationItems.isEmpty && block.activeRotationItems.count < 2 {
-                Text(s.rotationNeedsTwo)
+                HStack {
+                    Text(s.rotationOrder)
+                        .frame(width: 60, alignment: .trailing)
+                    Picker("", selection: $block.rotationOrder) {
+                        Text(s.rotationSequential).tag(RotationOrder.sequential)
+                        Text(s.rotationRandom).tag(RotationOrder.random)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                }
+
+                HStack(spacing: 8) {
+                    Button(s.rotationAddCurrent) {
+                        block.addCurrentTextToRotation()
+                    }
+                    .disabled(block.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || block.rotationItems.contains { $0.text == block.text })
+
+                    Button(s.rotationAddItem) {
+                        block.rotationItems.append(RotationItem(text: ""))
+                    }
+
+                    Spacer()
+
+                    Button(s.menuNextItem) {
+                        RotationController.shared.nextManually(block: block)
+                    }
+                    .disabled(!block.rotationEnabled || block.activeRotationItems.count < 2)
+
+                    Button(block.rotationPaused ? s.menuResumeRotation : s.menuPauseRotation) {
+                        RotationController.shared.togglePause(block: block)
+                    }
+                    .disabled(!block.rotationEnabled)
+                }
+                .controlSize(.small)
+
+                if block.rotationItems.isEmpty {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text(s.rotationEmpty)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Spacer()
+                    }
+                    Spacer()
+                } else {
+                    List {
+                        ForEach($block.rotationItems) { $item in
+                            HStack(spacing: 8) {
+                                TextField(s.rotationItemPlaceholder, text: $item.text)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(block.swiftUIFont(size: 13))
+                                if item.text == block.text && !item.text.isEmpty {
+                                    Text(s.current)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Button {
+                                    block.rotationItems.removeAll { $0.id == item.id }
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .onMove { block.rotationItems.move(fromOffsets: $0, toOffset: $1) }
+                        .onDelete { block.rotationItems.remove(atOffsets: $0) }
+                    }
+                    .listStyle(.inset)
+                }
+
+                if !block.rotationItems.isEmpty && block.activeRotationItems.count < 2 {
+                    Text(s.rotationNeedsTwo)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .disabled(block.dateEnabled)
+
+            if block.dateEnabled {
+                Text(s.rotationDisabledByDate)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -546,6 +638,12 @@ private struct BlockHistorySettingsView: View {
         let items = block.displayHistory   // 历史列表不含当前值
         VStack(alignment: .leading, spacing: 12) {
             BlockPickerRow()
+
+            if block.dateEnabled {
+                Text(s.dateHistoryHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             HStack {
                 Toggle(s.trackHistory, isOn: $block.trackHistory)

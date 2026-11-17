@@ -96,7 +96,7 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
         historySection = nil
 
         let items: [String]
-        if let block, block.trackHistory {
+        if let block, !block.dateEnabled, block.trackHistory {
             items = Array(block.displayHistory.prefix(Self.historyLimit))
         } else {
             items = []
@@ -169,13 +169,13 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
     }
 
     private func pick(_ value: String) {
-        guard let block else { return }
+        guard let block, !block.dateEnabled else { return }
         block.text = value   // didSet 会把旧的当前值记入历史，并把该值移出历史
         dismiss()
     }
 
     private func delete(_ value: String) {
-        guard let block else { return }
+        guard let block, !block.dateEnabled else { return }
         block.removeHistory(value)
         rebuildHistory()
     }
@@ -213,9 +213,11 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
         }
 
         self.block = block
-        textField.placeholderString = settings.strings.inputPlaceholder
+        textField.placeholderString = block.dateEnabled
+            ? settings.strings.dateFormatPlaceholder
+            : settings.strings.inputPlaceholder
         textField.font = block.resolvedFont(size: 14)
-        textField.stringValue = block.text
+        textField.stringValue = block.dateEnabled ? block.datePattern : block.text
         rebuildHistory()
 
         if let button, let window = button.window {
@@ -249,8 +251,14 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
 
     private func commit() {
         let value = textField.stringValue
-        if let block, !value.isEmpty, value != block.text {
-            block.text = value   // didSet 处理历史
+        if let block {
+            if block.dateEnabled {
+                if value != block.datePattern {
+                    block.datePattern = value
+                }
+            } else if !value.isEmpty, value != block.text {
+                block.text = value   // didSet 处理历史
+            }
         }
         dismiss()
     }

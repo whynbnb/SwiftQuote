@@ -39,6 +39,8 @@
 - **Custom text in the menu bar** — left-click for the menu, right-click to edit the clicked block
 - **Rich styling per block** — prefix/suffix, font size, bold, per-character colors (multiple colors cycle through characters), max width limit
 - **Custom font** — choose any installed font family, or keep the system default
+- **Dynamic date & time** — per block, live-updating date/time using Unicode TR35 patterns (e.g. `MM-dd[EEE]HH:mm`), with quick patterns and a screenshot-style preset
+- **Open Calendar on click** — optional per block: left-click opens Calendar; right-click then opens the app menu
 - **Adaptive colors** — maintain separate palettes for light/dark menu bars; colors switch automatically as the menu bar appearance changes (with a reset-to-default button)
 - **Text presets** — one-click templates like "Aloha!", "Do not disturb", "Coffee"
 - **Text rotation** — group multiple texts and rotate through them every 30s / 1m / 5m / 1h, sequentially or randomly; pause, resume, or skip to the next item from the menu
@@ -68,8 +70,10 @@ Or open `SwiftQuote.xcodeproj` in Xcode and run (the project is generated from `
 
 - **Right-click** a menu bar block to edit it in place (`⏎` to apply, `Esc` to cancel); that block's recent history is shown below the field — click an entry to apply it, or use the × button to delete it
 - **⌘-drag** menu bar blocks to rearrange them; positions are saved per block
+- **Dynamic date/time** is configured per block in the **Text** tab. The pattern follows [Unicode TR35](https://unicode.org/reports/tr35/tr35-dates.html#Date_Format_Patterns) and uses the system language/time zone. For example `MM-dd[EEE]HH:mm` with suffix ` ` gives the clock-style item; quick-pattern buttons set common formats
+- **Left-click Opens Calendar** can be enabled per block (also available from the menu). When enabled, left-click opens Calendar and right-click opens the app menu; turn it off to restore left-click menu / right-click edit
 - **Left-click** for the menu: Input…, Settings…, track history toggle, launch-at-login toggle, recent history (up to 5), rotation controls when enabled (Next / Pause), About (with version), Restart, Quit
-- Settings has six tabs: **General** (theme, language & startup), **Blocks** (add/delete/select menu bar blocks), **Text** (content, prefix/suffix, font family, size, bold, presets for the current block), **Colors** (per-character colors, adaptive menu bar palettes), **Rotation** (group texts, interval/order, enable, pause/next), **History** (current text shown separately; delete entries individually)
+- Settings has six tabs: **General** (theme, language & startup), **Blocks** (add/delete/select menu bar blocks), **Text** (content, prefix/suffix, font family, size, bold, dynamic date/time, presets for the current block), **Colors** (per-character colors, adaptive menu bar palettes), **Rotation** (group texts, interval/order, enable, pause/next; disabled in date/time mode), **History** (current text shown separately; delete entries individually)
 
 ## License
 

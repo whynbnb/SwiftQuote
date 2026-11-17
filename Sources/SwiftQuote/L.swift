@@ -18,6 +18,7 @@ struct L {
 
     // MARK: 菜单栏菜单
     var menuInput: String   { t("输入…", "Input…") }
+    var menuDateFormat: String { t("日期格式…", "Date Format…") }
     var menuSettings: String { t("设置…", "Settings…") }
     var menuQuit: String    { t("退出", "Quit") }
     var trackHistory: String { t("跟踪历史", "Track History") }
@@ -62,6 +63,35 @@ struct L {
     var systemDefault: String { t("系统默认", "System Default") }
     var fontSize: String    { t("文字大小", "Font Size") }
     var maxWidth: String    { t("最大宽度", "Max Width") }
+
+    // MARK: 动态日期时间
+    var groupDateTime: String { t("动态日期时间", "Dynamic Date & Time") }
+    var dynamicDateTime: String { t("启用动态日期时间", "Enable Dynamic Date & Time") }
+    var dateFormat: String { t("格式", "Format") }
+    var dateFormatPlaceholder: String { "MM-dd[EEE]HH:mm" }
+    var dateFormatHint: String {
+        t("使用 Unicode TR35 日期格式，例如 MM-dd[EEE]HH:mm；按系统语言和时区显示，字面字母可用单引号转义。",
+          "Uses Unicode TR35 date patterns (e.g. MM-dd[EEE]HH:mm). Dates follow the system language and time zone; quote literal letters with single quotes.")
+    }
+    var dateScreenshotPreset: String { t("截图格式 ", "Screenshot Format ") }
+    var preview: String { t("预览", "Preview") }
+    var dateContentIgnoredHint: String {
+        t("日期时间模式下，菜单栏显示格式结果；内容文字不参与显示，前缀和后缀仍然生效。",
+          "In date/time mode the menu bar shows the formatted result; the content text is hidden, while prefix and suffix still apply.")
+    }
+    var calendarOnLeftClick: String { t("左键打开系统日历", "Left-click Opens Calendar") }
+    var calendarClickHint: String {
+        t("开启后：左键点击该块打开系统日历，右键打开应用菜单；关闭后恢复左键菜单、右键编辑。",
+          "When on: left-click opens Calendar and right-click opens the app menu. When off: left-click opens the menu and right-click edits.")
+    }
+    var rotationDisabledByDate: String {
+        t("动态日期时间开启时轮播不生效，可先关闭日期时间。",
+          "Rotation is disabled while dynamic date/time is on. Turn it off to use rotation.")
+    }
+    var dateHistoryHint: String {
+        t("日期时间模式下不记录历史；关闭日期时间后继续使用原有历史。",
+          "History is not recorded in date/time mode; the existing history is kept for when you turn it off.")
+    }
     var groupAppearance: String { t("主题", "Appearance") }
     var appearanceSystem: String { t("跟随系统", "System") }
     var appearanceLight: String  { t("浅色", "Light") }

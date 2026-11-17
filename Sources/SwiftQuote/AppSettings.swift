@@ -30,6 +30,14 @@ struct BlockSnapshot: Codable, Equatable {
     var rotationInterval: RotationInterval
     var rotationOrder: RotationOrder
     var rotationItems: [RotationItem]
+    /// 动态日期时间：菜单栏按 datePattern 显示当前日期/时间
+    var dateEnabled: Bool
+    /// Unicode TR35 日期格式（例如 MM-dd[EEE]HH:mm）
+    var datePattern: String
+    /// 左键点击该块时打开系统日历
+    var calendarOnLeftClick: Bool
+
+    static let defaultDatePattern = "MM-dd[EEE]HH:mm"
 
     /// 新增块的默认值：只显示文字本身，样式与主块保持一致的基础值。
     static func makeDefault(autosaveName: String, text: String) -> BlockSnapshot {
@@ -53,7 +61,41 @@ struct BlockSnapshot: Codable, Equatable {
             rotationPaused: false,
             rotationInterval: .oneMinute,
             rotationOrder: .sequential,
-            rotationItems: [])
+            rotationItems: [],
+            dateEnabled: false,
+            datePattern: defaultDatePattern,
+            calendarOnLeftClick: false)
+    }
+}
+
+extension BlockSnapshot {
+    /// 兼容旧版本的块数据：新增的日期/日历字段缺失时使用默认值。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        autosaveName = try c.decode(String.self, forKey: .autosaveName)
+        text = try c.decode(String.self, forKey: .text)
+        prefix = try c.decode(String.self, forKey: .prefix)
+        suffix = try c.decode(String.self, forKey: .suffix)
+        trackHistory = try c.decode(Bool.self, forKey: .trackHistory)
+        maxWidth = try c.decode(Double.self, forKey: .maxWidth)
+        fontSize = try c.decode(Double.self, forKey: .fontSize)
+        bold = try c.decode(Bool.self, forKey: .bold)
+        fontFamily = try c.decodeIfPresent(String.self, forKey: .fontFamily)
+        colorEntries = try c.decode([ColorEntry].self, forKey: .colorEntries)
+        adaptiveColors = try c.decode(Bool.self, forKey: .adaptiveColors)
+        lightBarColorEntries = try c.decode([ColorEntry].self, forKey: .lightBarColorEntries)
+        darkBarColorEntries = try c.decode([ColorEntry].self, forKey: .darkBarColorEntries)
+        history = try c.decode([String].self, forKey: .history)
+        rotationEnabled = try c.decode(Bool.self, forKey: .rotationEnabled)
+        rotationPaused = try c.decode(Bool.self, forKey: .rotationPaused)
+        rotationInterval = try c.decode(RotationInterval.self, forKey: .rotationInterval)
+        rotationOrder = try c.decode(RotationOrder.self, forKey: .rotationOrder)
+        rotationItems = try c.decode([RotationItem].self, forKey: .rotationItems)
+        dateEnabled = try c.decodeIfPresent(Bool.self, forKey: .dateEnabled) ?? false
+        datePattern = try c.decodeIfPresent(String.self, forKey: .datePattern)
+            ?? BlockSnapshot.defaultDatePattern
+        calendarOnLeftClick = try c.decodeIfPresent(Bool.self, forKey: .calendarOnLeftClick) ?? false
     }
 }
 
@@ -63,6 +105,7 @@ final class BlockSettings: ObservableObject, Identifiable {
     enum Change {
         case display    // 需要刷新菜单栏标题
         case rotation   // 需要重排轮播定时器
+        case date       // 动态日期时间开关变化（启停时钟定时器）
         case persist    // 只需落盘（例如历史列表变化）
     }
 
@@ -104,6 +147,28 @@ final class BlockSettings: ObservableObject, Identifiable {
     /// 深色菜单栏（浅色壁纸）下使用的颜色
     @Published var darkBarColorEntries: [ColorEntry] { didSet { onChange?(.display) } }
     @Published var history: [String] { didSet { onChange?(.persist) } }
+
+    // MARK: - 动态日期时间
+
+    /// 开启后菜单栏显示按 `datePattern` 格式化的当前日期/时间。
+    @Published var dateEnabled: Bool {
+        didSet {
+            rebuildDateFormatter()
+            onChange?(.date)
+        }
+    }
+    /// Unicode TR35 日期格式，例如 MM-dd[EEE]HH:mm；空值使用默认格式。
+    @Published var datePattern: String {
+        didSet {
+            rebuildDateFormatter()
+            onChange?(.display)
+        }
+    }
+    /// 左键点击该块时打开系统日历（右键改为打开应用菜单，保证菜单入口仍在）。
+    @Published var calendarOnLeftClick: Bool { didSet { onChange?(.persist) } }
+
+    /// DateFormatter 的创建成本较高，按块缓存；pattern 变化时重建。
+    private var dateFormatter: DateFormatter?
 
     // MARK: - 轮播
 
@@ -169,6 +234,9 @@ final class BlockSettings: ObservableObject, Identifiable {
         rotationInterval = snapshot.rotationInterval
         rotationOrder = snapshot.rotationOrder
         rotationItems = snapshot.rotationItems
+        dateEnabled = snapshot.dateEnabled
+        datePattern = snapshot.datePattern
+        calendarOnLeftClick = snapshot.calendarOnLeftClick
     }
 
     var snapshot: BlockSnapshot {
@@ -192,7 +260,10 @@ final class BlockSettings: ObservableObject, Identifiable {
             rotationPaused: rotationPaused,
             rotationInterval: rotationInterval,
             rotationOrder: rotationOrder,
-            rotationItems: rotationItems)
+            rotationItems: rotationItems,
+            dateEnabled: dateEnabled,
+            datePattern: datePattern,
+            calendarOnLeftClick: calendarOnLeftClick)
     }
 
     // MARK: - 编辑 / 历史
@@ -251,12 +322,48 @@ final class BlockSettings: ObservableObject, Identifiable {
 
     // MARK: - 显示
 
-    var displayText: String { prefix + text + suffix }
+    /// 按 DateFormatter（Unicode TR35）格式化当前时间。
+    func dateText(at date: Date) -> String {
+        let formatter: DateFormatter
+        if let cached = dateFormatter,
+           cached.locale == Locale.current,
+           cached.timeZone == TimeZone.current,
+           cached.calendar == Calendar.current {
+            formatter = cached
+        } else {
+            // 系统时区/语言可能在运行中变化；直接重建，避免 Locale 变更重置 dateFormat。
+            rebuildDateFormatter()
+            formatter = dateFormatter ?? DateFormatter()
+        }
+        return formatter.string(from: date)
+    }
+
+    var dateText: String { dateText(at: Date()) }
+
+    func displayText(at date: Date) -> String {
+        prefix + (dateEnabled ? dateText(at: date) : text) + suffix
+    }
+
+    var displayText: String { displayText(at: Date()) }
 
     /// 用于设置页块列表/菜单标题的简短标签。
     func label(_ isChinese: Bool) -> String {
+        if dateEnabled {
+            let pattern = datePattern.trimmingCharacters(in: .whitespacesAndNewlines)
+            return pattern.isEmpty ? (isChinese ? "日期时间" : "Date & Time") : pattern
+        }
         let value = displayText.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? (isChinese ? "空块" : "Empty Block") : value
+    }
+
+    private func rebuildDateFormatter() {
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.calendar = .current
+        formatter.timeZone = .current
+        let pattern = datePattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        formatter.dateFormat = pattern.isEmpty ? BlockSnapshot.defaultDatePattern : datePattern
+        dateFormatter = formatter
     }
 
     /// 按当前字体族/粗体/字号解析实际字体；字体不可用时回退系统字体。
@@ -365,6 +472,11 @@ final class AppSettings: ObservableObject {
         case .display:
             onDisplayChange?(block)
         case .rotation:
+            onRotationChange?(block)
+        case .date:
+            // 日期模式切换会同时影响标题、时钟定时器和轮播（日期模式下不轮播）
+            onDisplayChange?(block)
+            onDateChange?(block)
             onRotationChange?(block)
         case .persist:
             break
@@ -485,7 +597,10 @@ final class AppSettings: ObservableObject {
                 ?? .oneMinute,
             rotationOrder: RotationOrder(rawValue: d.string(forKey: "rotationOrder") ?? "")
                 ?? .sequential,
-            rotationItems: rotationItems)
+            rotationItems: rotationItems,
+            dateEnabled: false,
+            datePattern: BlockSnapshot.defaultDatePattern,
+            calendarOnLeftClick: false)
     }
 
     private func persistBlocks() {
@@ -506,6 +621,8 @@ final class AppSettings: ObservableObject {
     var onDisplayChange: ((BlockSettings) -> Void)?
     /// 某个块的轮播配置变化
     var onRotationChange: ((BlockSettings) -> Void)?
+    /// 某个块的动态日期时间开关变化
+    var onDateChange: ((BlockSettings) -> Void)?
     /// 块的增删
     var onStructureChange: (() -> Void)?
     /// 主题外观变化（用于更新已打开的窗口）
