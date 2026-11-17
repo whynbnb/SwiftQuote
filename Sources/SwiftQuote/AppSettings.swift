@@ -235,18 +235,47 @@ final class AppSettings: ObservableObject {
 
 struct Preset: Identifiable {
     let id = UUID()
-    let name: String
-    let text: String
+    let nameZh: String
+    let nameEn: String
+    let textZh: String
+    let textEn: String
     let prefix: String
     let suffix: String
 
+    func name(_ isChinese: Bool) -> String { isChinese ? nameZh : nameEn }
+    func text(_ isChinese: Bool) -> String { isChinese ? textZh : textEn }
+
     static let all: [Preset] = [
-        .init(name: "Aloha!", text: "Aloha!", prefix: "[", suffix: "]"),
-        .init(name: "时间占位", text: "♥", prefix: "", suffix: ""),
-        .init(name: "工作中…", text: "工作中…", prefix: "⦿ ", suffix: ""),
-        .init(name: "免打扰", text: "请勿打扰", prefix: "🔕 ", suffix: ""),
-        .init(name: "Coffee", text: "Coffee", prefix: "☕️ ", suffix: ""),
-        .init(name: "日期", text: "", prefix: "「", suffix: "」"),
+        .init(nameZh: "Aloha!",
+              nameEn: "Aloha!",
+              textZh: "Aloha!",
+              textEn: "Aloha!",
+              prefix: "[", suffix: "]"),
+        .init(nameZh: "时间占位",
+              nameEn: "Time Placeholder",
+              textZh: "♥",
+              textEn: "♥",
+              prefix: "", suffix: ""),
+        .init(nameZh: "工作中…",
+              nameEn: "Working…",
+              textZh: "工作中…",
+              textEn: "Working…",
+              prefix: "⦿ ", suffix: ""),
+        .init(nameZh: "免打扰",
+              nameEn: "Do Not Disturb",
+              textZh: "请勿打扰",
+              textEn: "Do Not Disturb",
+              prefix: "🔕 ", suffix: ""),
+        .init(nameZh: "Coffee",
+              nameEn: "Coffee",
+              textZh: "Coffee",
+              textEn: "Coffee",
+              prefix: "☕️ ", suffix: ""),
+        .init(nameZh: "日期",
+              nameEn: "Date",
+              textZh: "",
+              textEn: "",
+              prefix: "「", suffix: "」"),
     ]
 }
 

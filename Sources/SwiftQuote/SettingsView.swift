@@ -48,6 +48,7 @@ struct TextSettingsView: View {
 
     var body: some View {
         let s = settings.strings
+        let isChinese = settings.isChinese
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 GroupBox(s.groupText) {
@@ -81,15 +82,16 @@ struct TextSettingsView: View {
                     VStack(spacing: 4) {
                         ForEach(Preset.all) { preset in
                             HStack {
-                                Text(preset.name)
+                                Text(preset.name(isChinese))
                                 Spacer()
-                                Text(preset.prefix + preset.text + preset.suffix)
+                                Text(preset.prefix + preset.text(isChinese) + preset.suffix)
                                     .foregroundStyle(.secondary)
                                 Button(s.apply) {
                                     settings.prefix = preset.prefix
                                     settings.suffix = preset.suffix
-                                    if !preset.text.isEmpty {
-                                        settings.text = preset.text
+                                    let value = preset.text(isChinese)
+                                    if !value.isEmpty {
+                                        settings.text = value
                                     }
                                 }
                                 .controlSize(.small)
