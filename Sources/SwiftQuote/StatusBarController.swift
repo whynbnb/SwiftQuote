@@ -18,6 +18,10 @@ final class StatusBarController: NSObject, ObservableObject {
     private var lastRenderedTitle: NSAttributedString?
     private var lastRenderedLength: CGFloat = 0
 
+    /// 状态项的最小长度：即使文字、前缀、后缀全部为空，也保留一个可点击的入口，
+    /// 避免用户把内容清空后菜单栏项消失、再也打不开设置。
+    private static let minimumStatusItemWidth: CGFloat = 22
+
     func setup() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem.button else { return }
@@ -72,8 +76,16 @@ final class StatusBarController: NSObject, ObservableObject {
                 string: String(ch),
                 attributes: [.font: settings.font, .foregroundColor: color]))
         }
-        // 紧凑布局：长度 = 文字实际宽度（cell 内部零补白；剩余间距是系统项间距）
-        let width = min(ceil(str.size().width), settings.maxWidth)
+        // 紧凑布局：长度 = 文字实际宽度（cell 内部零补白；剩余间距是系统项间距）。
+        // 同时保证一个最小宽度：内容全部清空时仍保留可点击区域，不会把入口弄丢。
+        let textWidth = ceil(str.size().width)
+        let maxWidth = max(CGFloat(settings.maxWidth), Self.minimumStatusItemWidth)
+        let width = max(min(textWidth, maxWidth), Self.minimumStatusItemWidth)
+
+        // 内容为空时用提示文案兜底，方便用户悬停/读屏时知道这里可以点。
+        let accessibleText = full.isEmpty ? "SwiftQuote" : full
+        button.toolTip = full.isEmpty ? settings.strings.statusItemToolTip : full
+        button.setAccessibilityLabel(accessibleText)
 
         // 避免重复写入相同的 attributedTitle：macOS 上反复赋值（尤其是相同值）
         // 会让状态项整个消失。内容/宽度没变就直接跳过。

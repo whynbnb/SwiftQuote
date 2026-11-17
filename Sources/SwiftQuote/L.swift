@@ -23,6 +23,10 @@ struct L {
     var trackHistory: String { t("跟踪历史", "Track History") }
     var historyHeader: String { t("历史", "History") }
     var clearHistory: String { t("清除历史", "Clear History") }
+    var statusItemToolTip: String {
+        t("SwiftQuote：左键打开菜单，右键编辑文字",
+          "SwiftQuote — left-click for menu, right-click to edit")
+    }
 
     // MARK: 输入面板
     var inputPlaceholder: String { t("输入内容，回车确认", "Type and press Return") }
