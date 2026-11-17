@@ -98,6 +98,37 @@ enum FontWeight: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+/// 动态日期时间的语言，独立于应用界面语言。
+enum DateLanguage: String, CaseIterable, Identifiable, Codable {
+    case system, chinese, english
+
+    var id: String { rawValue }
+
+    var locale: Locale {
+        switch self {
+        case .chinese:
+            return Locale(identifier: "zh_CN")
+        case .english:
+            return Locale(identifier: "en_US")
+        case .system:
+            // 打包 App 的 Locale.current 可能因缺少中文本地化变成 en_CN；
+            // 跟随系统时应使用用户的偏好语言。
+            if let preferred = Locale.preferredLanguages.first {
+                return Locale(identifier: preferred)
+            }
+            return Locale.current
+        }
+    }
+
+    func label(_ isChinese: Bool) -> String {
+        switch self {
+        case .system:  return isChinese ? "跟随系统" : "System"
+        case .chinese: return isChinese ? "中文" : "Chinese"
+        case .english: return isChinese ? "English" : "English"
+        }
+    }
+}
+
 /// 菜单栏块的持久化快照。运行时状态（菜单栏深浅等）不写在这里。
 struct BlockSnapshot: Codable, Equatable {
     var id: UUID
@@ -127,6 +158,8 @@ struct BlockSnapshot: Codable, Equatable {
     var dateEnabled: Bool
     /// Unicode TR35 日期格式（例如 MM-dd[EEE]HH:mm）
     var datePattern: String
+    /// 日期语言（独立于界面语言）
+    var dateLanguage: DateLanguage
     /// 左键点击该块时打开系统日历
     var calendarOnLeftClick: Bool
 
@@ -160,6 +193,7 @@ struct BlockSnapshot: Codable, Equatable {
             rotationItems: [],
             dateEnabled: false,
             datePattern: defaultDatePattern,
+            dateLanguage: .system,
             calendarOnLeftClick: false)
     }
 }
@@ -212,6 +246,7 @@ extension BlockSnapshot {
         dateEnabled = (try? c.decode(Bool.self, forKey: .dateEnabled)) ?? false
         datePattern = (try? c.decode(String.self, forKey: .datePattern))
             ?? BlockSnapshot.defaultDatePattern
+        dateLanguage = (try? c.decode(DateLanguage.self, forKey: .dateLanguage)) ?? .system
         calendarOnLeftClick = (try? c.decode(Bool.self, forKey: .calendarOnLeftClick)) ?? false
     }
 }
@@ -289,6 +324,13 @@ final class BlockSettings: ObservableObject, Identifiable {
     }
     /// Unicode TR35 日期格式，例如 MM-dd[EEE]HH:mm；空值使用默认格式。
     @Published var datePattern: String {
+        didSet {
+            rebuildDateFormatter()
+            onChange?(.display)
+        }
+    }
+    /// 日期语言，可独立于界面语言。
+    @Published var dateLanguage: DateLanguage {
         didSet {
             rebuildDateFormatter()
             onChange?(.display)
@@ -386,6 +428,7 @@ final class BlockSettings: ObservableObject, Identifiable {
         rotationItems = snapshot.rotationItems
         dateEnabled = snapshot.dateEnabled
         datePattern = snapshot.datePattern
+        dateLanguage = snapshot.dateLanguage
         calendarOnLeftClick = snapshot.calendarOnLeftClick
         trimHistory()
     }
@@ -417,6 +460,7 @@ final class BlockSettings: ObservableObject, Identifiable {
             rotationItems: rotationItems,
             dateEnabled: dateEnabled,
             datePattern: datePattern,
+            dateLanguage: dateLanguage,
             calendarOnLeftClick: calendarOnLeftClick)
     }
 
@@ -533,16 +577,23 @@ final class BlockSettings: ObservableObject, Identifiable {
 
     // MARK: - 显示
 
+    /// 日期语言独立于应用界面语言；跟随系统时使用系统偏好语言，
+    /// 避免打包 App 的 Locale.current 因缺少中文本地化变成 en_CN。
+    private var effectiveDateLocale: Locale {
+        dateLanguage.locale
+    }
+
     /// 按 DateFormatter（Unicode TR35）格式化当前时间。
     func dateText(at date: Date) -> String {
+        let locale = effectiveDateLocale
         let formatter: DateFormatter
         if let cached = dateFormatter,
-           cached.locale == Locale.current,
+           cached.locale == locale,
            cached.timeZone == TimeZone.current,
            cached.calendar == Calendar.current {
             formatter = cached
         } else {
-            // 系统时区/语言可能在运行中变化；直接重建，避免 Locale 变更重置 dateFormat。
+            // 语言/时区可能在运行中变化；直接重建，避免 Locale 变更重置 dateFormat。
             rebuildDateFormatter()
             formatter = dateFormatter ?? DateFormatter()
         }
@@ -569,7 +620,7 @@ final class BlockSettings: ObservableObject, Identifiable {
 
     private func rebuildDateFormatter() {
         let formatter = DateFormatter()
-        formatter.locale = .current
+        formatter.locale = effectiveDateLocale
         formatter.calendar = .current
         formatter.timeZone = .current
         let pattern = datePattern.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -671,7 +722,8 @@ final class AppSettings: ObservableObject {
     /// 设置/备份数据结构版本。修改备份结构时递增，并在 decodeBackup 中做迁移。
     /// v2: history 从 [String] 升级为 [HistoryEntry]（文字 + 前后缀 + 收藏），新增 historyLimit。
     /// v3: 新增 fontWeight（9 档）与 tracking（字距），bold 保留用于旧版本兼容。
-    static let dataVersion = 3
+    /// v4: 新增 dateLanguage，可独立于界面语言选择日期语言。
+    static let dataVersion = 4
 
     /// 恢复默认时需要清理的 UserDefaults 键。
     private static let managedDefaultsKeys = [
@@ -883,6 +935,7 @@ final class AppSettings: ObservableObject {
             rotationItems: rotationItems,
             dateEnabled: false,
             datePattern: BlockSnapshot.defaultDatePattern,
+            dateLanguage: .system,
             calendarOnLeftClick: false)
     }
 
@@ -953,6 +1006,7 @@ final class AppSettings: ObservableObject {
 
         // v1 -> v2：历史项由字符串升级为对象；BlockSnapshot 同时接受两种格式。
         // v2 -> v3：新增 fontWeight/tracking；缺失时由旧 bold 推导，tracking 默认 0。
+        // v3 -> v4：新增 dateLanguage；缺失时默认跟随系统偏好语言。
         // 未来新增字段时，在此按 schemaVersion 做必要迁移。
         // BlockSnapshot 对缺失字段使用默认值、对未知字段自动忽略，因此大多数升级无需额外迁移。
 
@@ -1089,6 +1143,7 @@ final class AppSettings: ObservableObject {
         let keys = [
             "text", "prefix", "suffix", "fontFamily", "fontWeight", "fontSize",
             "tracking", "colorEntries", "history", "rotationItems", "datePattern",
+            "dateLanguage",
         ]
         return keys.contains { key in
             guard let value = dict[key] else { return false }

@@ -73,10 +73,11 @@ struct L {
     var groupDateTime: String { t("动态日期时间", "Dynamic Date & Time") }
     var dynamicDateTime: String { t("启用动态日期时间", "Enable Dynamic Date & Time") }
     var dateFormat: String { t("格式", "Format") }
+    var dateLanguage: String { t("日期语言", "Date Language") }
     var dateFormatPlaceholder: String { "MM-dd[EEE]HH:mm" }
     var dateFormatHint: String {
-        t("使用 Unicode TR35 日期格式，例如 MM-dd[EEE]HH:mm；按系统语言和时区显示，字面字母可用单引号转义。",
-          "Uses Unicode TR35 date patterns (e.g. MM-dd[EEE]HH:mm). Dates follow the system language and time zone; quote literal letters with single quotes.")
+        t("使用 Unicode TR35 日期格式，例如 MM-dd[EEE]HH:mm；日期语言可独立选择，时区跟随系统，字面字母可用单引号转义。",
+          "Uses Unicode TR35 date patterns (e.g. MM-dd[EEE]HH:mm). Date language is independent of the app language; time zone follows the system. Quote literal letters with single quotes.")
     }
     var dateScreenshotPreset: String { t("截图格式 ", "Screenshot Format ") }
     var preview: String { t("预览", "Preview") }

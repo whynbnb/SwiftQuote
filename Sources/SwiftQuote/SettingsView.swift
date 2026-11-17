@@ -488,6 +488,19 @@ private struct BlockTextSettingsView: View {
                                 .frame(maxWidth: .infinity)
                         }
 
+                        HStack {
+                            Text(s.dateLanguage)
+                                .frame(width: 60, alignment: .trailing)
+                            Picker("", selection: $block.dateLanguage) {
+                                ForEach(DateLanguage.allCases) { language in
+                                    Text(language.label(isChinese)).tag(language)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
                         Text(s.dateFormatHint)
                             .font(.caption)
                             .foregroundStyle(.secondary)
