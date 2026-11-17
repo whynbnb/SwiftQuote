@@ -15,9 +15,11 @@ final class AppSettings: ObservableObject {
     @Published var text: String {
         didSet {
             UserDefaults.standard.set(text, forKey: "text")
+            // 当前值永远不留在历史里。实时编辑（suppressHistory）也要执行这一步，
+            // 只是不把被替换掉的旧值新增进历史。
+            history.removeAll { $0 == text }
             if !suppressHistory {
-                // 当前值不留在历史里；被替换掉的旧值进入历史（“切换”语义）
-                history.removeAll { $0 == text }
+                // 被替换掉的旧值进入历史（“切换”语义）
                 if trackHistory, !oldValue.isEmpty, oldValue != text {
                     history.removeAll { $0 == oldValue }
                     history.insert(oldValue, at: 0)

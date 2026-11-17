@@ -133,9 +133,11 @@ final class StatusBarController: NSObject, ObservableObject {
         loginToggle.isEnabled = settings.loginItemAvailable   // SPM 裸跑时禁用
         menu.addItem(loginToggle)
 
-        if settings.trackHistory && !settings.history.isEmpty {
+        // 历史里永远排除当前值（实时编辑后当前值也可能短暂留在底层 history 中）
+        let displayHistory = settings.displayHistory
+        if settings.trackHistory && !displayHistory.isEmpty {
             menu.addItem(.separator())
-            historyHeaderMenu(menu)
+            historyHeaderMenu(menu, items: Array(displayHistory.prefix(5)))
         }
 
         menu.addItem(.separator())
@@ -163,11 +165,11 @@ final class StatusBarController: NSObject, ObservableObject {
         statusItem.menu = nil
     }
 
-    private func historyHeaderMenu(_ menu: NSMenu) {
+    private func historyHeaderMenu(_ menu: NSMenu, items: [String]) {
         let header = NSMenuItem(title: settings.strings.historyHeader, action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
-        for item in settings.history.prefix(5) {
+        for item in items {
             let mi = NSMenuItem(title: item, action: #selector(onHistoryItem(_:)), keyEquivalent: "")
             mi.target = self
             mi.representedObject = item
