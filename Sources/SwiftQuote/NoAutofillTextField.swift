@@ -46,9 +46,13 @@ final class NoAutofillTextField: NSTextField {
 struct NoAutofillTextFieldView: NSViewRepresentable {
     let placeholder: String
     @Binding var text: String
+    var onBeginEditing: (() -> Void)?
+    var onEndEditing: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
+        Coordinator(text: $text,
+                    onBeginEditing: onBeginEditing,
+                    onEndEditing: onEndEditing)
     }
 
     func makeNSView(context: Context) -> NoAutofillTextField {
@@ -67,6 +71,8 @@ struct NoAutofillTextFieldView: NSViewRepresentable {
 
     func updateNSView(_ field: NoAutofillTextField, context: Context) {
         context.coordinator.text = $text
+        context.coordinator.onBeginEditing = onBeginEditing
+        context.coordinator.onEndEditing = onEndEditing
         if field.placeholderString != placeholder {
             field.placeholderString = placeholder
             field.setAccessibilityLabel(placeholder)
@@ -90,9 +96,23 @@ struct NoAutofillTextFieldView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var text: Binding<String>
+        var onBeginEditing: (() -> Void)?
+        var onEndEditing: (() -> Void)?
 
-        init(text: Binding<String>) {
+        init(text: Binding<String>,
+             onBeginEditing: (() -> Void)?,
+             onEndEditing: (() -> Void)?) {
             self.text = text
+            self.onBeginEditing = onBeginEditing
+            self.onEndEditing = onEndEditing
+        }
+
+        func controlTextDidBeginEditing(_ notification: Notification) {
+            onBeginEditing?()
+        }
+
+        func controlTextDidEndEditing(_ notification: Notification) {
+            onEndEditing?()
         }
 
         func controlTextDidChange(_ notification: Notification) {

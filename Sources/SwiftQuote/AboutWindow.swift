@@ -12,7 +12,6 @@ final class AboutWindowController: NSWindowController, NSWindowDelegate {
             styleMask: [.titled, .closable],
             backing: .buffered, defer: false)
         window.title = s.aboutTitle
-        window.isReleasedWhenClosed = false
         self.init(window: window)
         window.delegate = self
         window.contentView = NSHostingView(rootView: AboutView())

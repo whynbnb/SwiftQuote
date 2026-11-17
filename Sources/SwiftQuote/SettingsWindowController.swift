@@ -86,6 +86,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        // 关窗时补记可能尚未失焦的正文编辑（endTextEditing 幂等）
+        AppSettings.shared.endTextEditing()
         // 关闭后异步释放（避免在 delegate 回调中自释放）。
         // 若窗口在回调执行前又被重新打开，则保留控制器，避免把正在显示的窗口释放掉。
         DispatchQueue.main.async { [weak self] in

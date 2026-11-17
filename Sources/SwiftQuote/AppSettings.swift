@@ -101,6 +101,25 @@ final class AppSettings: ObservableObject {
         suppressHistory = false
     }
 
+    /// 设置页「内容」输入框开始编辑时记录基线。
+    private var textEditBaseline: String?
+
+    func beginTextEditing() {
+        guard textEditBaseline == nil else { return }
+        textEditBaseline = text
+    }
+
+    /// 输入框失焦 / 设置窗口关闭时，把“开始编辑前的当前值”补记一次历史。
+    /// 逐字输入期间仍不写历史，避免半截输入污染列表。
+    func endTextEditing() {
+        guard let baseline = textEditBaseline else { return }
+        textEditBaseline = nil
+        guard !suppressHistory, trackHistory, !baseline.isEmpty, baseline != text else { return }
+        history.removeAll { $0 == baseline || $0 == text }
+        history.insert(baseline, at: 0)
+        if history.count > 10 { history = Array(history.prefix(10)) }
+    }
+
     /// 用于展示的历史列表：始终排除当前值。
     var displayHistory: [String] { history.filter { $0 != text } }
 
@@ -117,7 +136,8 @@ final class AppSettings: ObservableObject {
         suffix = d.string(forKey: "suffix") ?? "]"
         trackHistory = d.object(forKey: "trackHistory") as? Bool ?? true
         maxWidth = d.object(forKey: "maxWidth") as? Double ?? 200
-        fontSize = d.object(forKey: "fontSize") as? Double ?? 13
+        // 菜单栏高度约 24pt，字号上限压到 21，避免上下被裁切；同时兜底旧数据中的越界值。
+        fontSize = min(max(d.object(forKey: "fontSize") as? Double ?? 13, 9), 21)
         bold = d.object(forKey: "bold") as? Bool ?? true
         if let data = d.data(forKey: "colorEntries"),
            let decoded = try? JSONDecoder().decode([ColorEntry].self, from: data),
@@ -128,7 +148,13 @@ final class AppSettings: ObservableObject {
             let legacy = d.stringArray(forKey: "colors") ?? ["#FFFFFF"]
             colorEntries = legacy.map { ColorEntry(hex: $0) }
         }
-        history = (d.stringArray(forKey: "history") ?? []).filter { $0 != currentText }   // 当前值不进历史列表
+        // 历史：过滤当前值/空值，去重并截断到 10 条，避免旧数据产生重复 ID 或超长列表
+        var cleanedHistory: [String] = []
+        for item in d.stringArray(forKey: "history") ?? []
+        where item != currentText && !item.isEmpty {
+            if !cleanedHistory.contains(item) { cleanedHistory.append(item) }
+        }
+        history = Array(cleanedHistory.prefix(10))
         adaptiveColors = d.object(forKey: "adaptiveColors") as? Bool ?? false
         func loadEntries(_ key: String, fallback: [ColorEntry]) -> [ColorEntry] {
             guard let data = d.data(forKey: key),
@@ -147,16 +173,44 @@ final class AppSettings: ObservableObject {
     /// 无 Bundle ID（非打包 App）时无法注册登录项
     var loginItemAvailable: Bool { Bundle.main.bundleIdentifier != nil }
 
+    /// 登录项实时状态：enabled / requiresApproval / notFound / notRegistered
+    var loginItemStatus: SMAppService.Status? {
+        loginItemAvailable ? SMAppService.mainApp.status : nil
+    }
+
+    /// 最近一次切换登录项失败的原因（nil 表示没有错误）
+    @Published var loginItemError: String?
+
     var launchAtLogin: Bool {
-        get { SMAppService.mainApp.status == .enabled }
+        get { loginItemStatus == .enabled }
         set {
             guard loginItemAvailable else { return }
+            loginItemError = nil
             do {
                 if newValue { try SMAppService.mainApp.register() }
                 else { try SMAppService.mainApp.unregister() }
             } catch {
+                loginItemError = error.localizedDescription
                 NSLog("登录项切换失败: \(error.localizedDescription)")
             }
+            // register() 后可能进入 .requiresApproval；launchAtLogin 是计算属性，
+            // 需要手动通知 SwiftUI 重新读取状态与错误信息。
+            objectWillChange.send()
+        }
+    }
+
+    /// 打开系统设置的「登录项」页面（用于需要用户批准时引导）
+    func openLoginItemsSettings() {
+        SMAppService.openSystemSettingsLoginItems()
+    }
+
+    /// 重新读取登录项状态：从系统设置批准/拒绝后返回 App 时刷新 UI。
+    func refreshLoginItemState() {
+        if loginItemStatus == .enabled || loginItemStatus == .requiresApproval,
+           loginItemError != nil {
+            loginItemError = nil   // @Published 会自动通知 SwiftUI
+        } else {
+            objectWillChange.send()
         }
     }
 

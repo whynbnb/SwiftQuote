@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import Combine
 
 /// 通用页：主题 / 语言 / 开机自启（默认 Tab）
 struct GeneralSettingsView: View {
@@ -30,8 +32,28 @@ struct GeneralSettingsView: View {
                     get: { settings.launchAtLogin },
                     set: { settings.launchAtLogin = $0 }))
                     .disabled(!settings.loginItemAvailable)
+
                 if !settings.loginItemAvailable {
                     Text(s.launchAtLoginUnavailable)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let error = settings.loginItemError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                } else if settings.loginItemStatus == .requiresApproval {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(s.loginItemRequiresApproval)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button(s.openLoginItems) {
+                            settings.openLoginItemsSettings()
+                        }
+                        .controlSize(.small)
+                    }
+                } else if settings.loginItemStatus == .notFound {
+                    Text(s.loginItemNotFound)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -39,6 +61,10 @@ struct GeneralSettingsView: View {
         }
         .formStyle(.grouped)
         .padding(.top, 12)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // 从系统设置批准/拒绝登录项后返回，重新读取真实状态
+            settings.refreshLoginItemState()
+        }
     }
 }
 
@@ -56,13 +82,15 @@ struct TextSettingsView: View {
                         // 实时编辑：更新菜单栏但不逐字写历史（切换时才把旧值记入历史）
                         labeledField(s.content, text: Binding(
                             get: { settings.text },
-                            set: { settings.setTextLive($0) }))
+                            set: { settings.setTextLive($0) }),
+                            onBeginEditing: { settings.beginTextEditing() },
+                            onEndEditing: { settings.endTextEditing() })
                         labeledField(s.prefix, text: $settings.prefix)
                         labeledField(s.suffix, text: $settings.suffix)
                         Toggle(s.bold, isOn: $settings.bold)
                         HStack {
                             Text(s.fontSize)
-                            Slider(value: $settings.fontSize, in: 9...24, step: 0.5)
+                            Slider(value: $settings.fontSize, in: 9...21, step: 0.5)
                             Text("\(settings.fontSize, specifier: "%.1f")")
                                 .monospacedDigit()
                                 .frame(width: 34, alignment: .trailing)
@@ -112,11 +140,15 @@ struct TextSettingsView: View {
         }
     }
 
-    private func labeledField(_ label: String, text: Binding<String>) -> some View {
+    private func labeledField(_ label: String, text: Binding<String>,
+                              onBeginEditing: (() -> Void)? = nil,
+                              onEndEditing: (() -> Void)? = nil) -> some View {
         HStack {
             Text(label)
                 .frame(width: 60, alignment: .trailing)
-            NoAutofillTextFieldView(placeholder: label, text: text)
+            NoAutofillTextFieldView(placeholder: label, text: text,
+                                    onBeginEditing: onBeginEditing,
+                                    onEndEditing: onEndEditing)
                 .frame(maxWidth: .infinity)
         }
     }

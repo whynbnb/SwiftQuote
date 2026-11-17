@@ -54,6 +54,15 @@ struct L {
     var groupStartup: String  { t("启动", "Startup") }
     var launchAtLogin: String { t("开机自启", "Launch at Login") }
     var launchAtLoginUnavailable: String { t("需以打包的 App 形式运行才可用", "Requires running as a bundled app") }
+    var loginItemRequiresApproval: String {
+        t("需要在系统设置的「登录项」中允许", "Allow it in System Settings > Login Items")
+    }
+    var loginItemNotFound: String {
+        t("未找到登录项，请重新安装 App", "Login item not found; reinstall the app")
+    }
+    var openLoginItems: String {
+        t("打开登录项设置", "Open Login Items Settings")
+    }
     var menuAbout: String     { t("关于", "About") }
     var menuRestart: String   { t("重启", "Restart") }
     var aboutTitle: String    { t("关于 SwiftQuote", "About SwiftQuote") }
@@ -66,7 +75,6 @@ struct L {
     var apply: String       { t("应用", "Apply") }
 
     // MARK: 颜色设置
-    var addColor: String    { t("添加颜色", "Add Color") }
     var add: String         { t("添加", "Add") }
     var adaptiveColors: String { t("自适应菜单栏（浅色/深色两套颜色）", "Adapt to menu bar (light/dark palettes)") }
     var lightBarColors: String { t("浅色菜单栏（用深色文字）", "Light Menu Bar (dark text)") }

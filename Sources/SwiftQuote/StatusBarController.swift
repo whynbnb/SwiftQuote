@@ -1,6 +1,4 @@
 import AppKit
-import SwiftUI
-import Combine
 
 @MainActor
 final class StatusBarController: NSObject, ObservableObject {
@@ -12,7 +10,6 @@ final class StatusBarController: NSObject, ObservableObject {
     private var aboutWindowController: AboutWindowController?
     private let settings = AppSettings.shared
     private var appearanceObservation: NSKeyValueObservation?
-    private var cancellables = Set<AnyCancellable>()
 
     /// 上一次真正写入按钮的标题，用于避免重复赋值（见 refreshTitle）。
     private var lastRenderedTitle: NSAttributedString?
@@ -24,6 +21,8 @@ final class StatusBarController: NSObject, ObservableObject {
 
     func setup() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // 记住用户 Cmd+拖动后的位置，重启后保持在菜单栏同一位置
+        statusItem.autosaveName = "SwiftQuoteStatusItem"
         guard let button = statusItem.button else { return }
         button.action = #selector(onClick(_:))
         button.target = self
