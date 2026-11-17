@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// 不触发系统「AutoFill」的文本输入框。
 ///
@@ -37,4 +38,66 @@ final class NoAutofillTextField: NSTextField {
     /// 私有 selector：AppKit 用它决定是否为该字段提供密码 AutoFill 建议。
     /// 覆写为 `false` 即关闭**本字段**的自动填充提示 UI（不涉及 launchd 的 helper 进程）。
     @objc func _isPasswordAutofillEnabled() -> Bool { false }
+}
+
+/// SwiftUI 包装：设置页等 SwiftUI 界面也能复用 `NoAutofillTextField`。
+/// 另外设置 `contentType = .oneTimeCode` 作为兜底（私有 selector 失效时仍可能有效）。
+@MainActor
+struct NoAutofillTextFieldView: NSViewRepresentable {
+    let placeholder: String
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    func makeNSView(context: Context) -> NoAutofillTextField {
+        let field = NoAutofillTextField()
+        field.placeholderString = placeholder
+        field.isBezeled = true
+        field.bezelStyle = .roundedBezel
+        field.font = .systemFont(ofSize: NSFont.systemFontSize)
+        field.contentType = .oneTimeCode
+        field.delegate = context.coordinator
+        field.setAccessibilityLabel(placeholder)
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return field
+    }
+
+    func updateNSView(_ field: NoAutofillTextField, context: Context) {
+        context.coordinator.text = $text
+        if field.placeholderString != placeholder {
+            field.placeholderString = placeholder
+            field.setAccessibilityLabel(placeholder)
+        }
+        // 正在编辑时不要回写，避免破坏光标/输入法状态
+        if field.currentEditor() == nil, field.stringValue != text {
+            field.stringValue = text
+        }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize,
+                      nsView: NoAutofillTextField,
+                      context: Context) -> CGSize? {
+        let height = nsView.intrinsicContentSize.height > 0
+            ? nsView.intrinsicContentSize.height
+            : 22
+        guard let width = proposal.width else { return nil }
+        return CGSize(width: width, height: height)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var text: Binding<String>
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            text.wrappedValue = field.stringValue
+        }
+    }
 }

@@ -110,14 +110,12 @@ struct TextSettingsView: View {
         }
     }
 
-    private func labeledField(_ label: String, text: Binding<String>,
-                              onSubmit: (() -> Void)? = nil) -> some View {
+    private func labeledField(_ label: String, text: Binding<String>) -> some View {
         HStack {
             Text(label)
                 .frame(width: 60, alignment: .trailing)
-            TextField(label, text: text)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { onSubmit?() }
+            NoAutofillTextFieldView(placeholder: label, text: text)
+                .frame(maxWidth: .infinity)
         }
     }
 }
