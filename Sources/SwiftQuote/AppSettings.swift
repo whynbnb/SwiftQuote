@@ -17,6 +17,29 @@ extension ColorEntry {
     }
 }
 
+/// 一条历史记录：文字 + 当时的前缀/后缀，可收藏置顶。
+struct HistoryEntry: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var text: String
+    var prefix: String = ""
+    var suffix: String = ""
+    var isPinned: Bool = false
+
+    var displayValue: String { prefix + text + suffix }
+}
+
+extension HistoryEntry {
+    /// 缺失字段时使用默认值，避免单条历史数据损坏影响整个块。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        text = (try? c.decode(String.self, forKey: .text)) ?? ""
+        prefix = (try? c.decode(String.self, forKey: .prefix)) ?? ""
+        suffix = (try? c.decode(String.self, forKey: .suffix)) ?? ""
+        isPinned = (try? c.decode(Bool.self, forKey: .isPinned)) ?? false
+    }
+}
+
 /// 菜单栏块的持久化快照。运行时状态（菜单栏深浅等）不写在这里。
 struct BlockSnapshot: Codable, Equatable {
     var id: UUID
@@ -33,7 +56,8 @@ struct BlockSnapshot: Codable, Equatable {
     var adaptiveColors: Bool
     var lightBarColorEntries: [ColorEntry]
     var darkBarColorEntries: [ColorEntry]
-    var history: [String]
+    var history: [HistoryEntry]
+    var historyLimit: Int
     var rotationEnabled: Bool
     var rotationPaused: Bool
     var rotationInterval: RotationInterval
@@ -66,6 +90,7 @@ struct BlockSnapshot: Codable, Equatable {
             lightBarColorEntries: [ColorEntry(hex: "#000000")],
             darkBarColorEntries: [ColorEntry(hex: "#FFFFFF")],
             history: [],
+            historyLimit: 10,
             rotationEnabled: false,
             rotationPaused: false,
             rotationInterval: .oneMinute,
@@ -87,8 +112,10 @@ extension BlockSnapshot {
         id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
         autosaveName = (try? c.decode(String.self, forKey: .autosaveName)) ?? ""
         text = (try? c.decode(String.self, forKey: .text)) ?? ""
-        prefix = (try? c.decode(String.self, forKey: .prefix)) ?? ""
-        suffix = (try? c.decode(String.self, forKey: .suffix)) ?? ""
+        let decodedPrefix = (try? c.decode(String.self, forKey: .prefix)) ?? ""
+        let decodedSuffix = (try? c.decode(String.self, forKey: .suffix)) ?? ""
+        prefix = decodedPrefix
+        suffix = decodedSuffix
         trackHistory = (try? c.decode(Bool.self, forKey: .trackHistory)) ?? true
         maxWidth = (try? c.decode(Double.self, forKey: .maxWidth)) ?? 200
         fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 13
@@ -101,7 +128,15 @@ extension BlockSnapshot {
             ?? [ColorEntry(hex: "#000000")]
         darkBarColorEntries = (try? c.decode([ColorEntry].self, forKey: .darkBarColorEntries))
             ?? [ColorEntry(hex: "#FFFFFF")]
-        history = (try? c.decode([String].self, forKey: .history)) ?? []
+        // 旧版本历史是 [String]；新版本是 [HistoryEntry]（含前缀/后缀/收藏状态）。
+        if let legacyHistory = try? c.decode([String].self, forKey: .history) {
+            history = legacyHistory.map {
+                HistoryEntry(text: $0, prefix: decodedPrefix, suffix: decodedSuffix)
+            }
+        } else {
+            history = (try? c.decode([HistoryEntry].self, forKey: .history)) ?? []
+        }
+        historyLimit = (try? c.decode(Int.self, forKey: .historyLimit)) ?? 10
         rotationEnabled = (try? c.decode(Bool.self, forKey: .rotationEnabled)) ?? false
         rotationPaused = (try? c.decode(Bool.self, forKey: .rotationPaused)) ?? false
         rotationInterval = (try? c.decode(RotationInterval.self, forKey: .rotationInterval))
@@ -132,15 +167,13 @@ final class BlockSettings: ObservableObject, Identifiable {
 
     @Published var text: String {
         didSet {
-            // 当前值永远不留在历史里。实时编辑（suppressHistory）也要执行这一步，
-            // 只是不把被替换掉的旧值新增进历史。
-            history.removeAll { $0 == text }
+            // 当前值永远不出现在历史列表里；收藏项保留在底层（当前值时由 displayHistory 隐藏）。
+            // 实时编辑（suppressHistory）也要执行这一步，只是不把被替换掉的旧值新增进历史。
+            history.removeAll { !$0.isPinned && $0.text == text }
             if !suppressHistory {
-                // 被替换掉的旧值进入历史（“切换”语义）
+                // 被替换掉的旧值进入历史（“切换”语义），同时保存当时的前缀/后缀
                 if trackHistory, !oldValue.isEmpty, oldValue != text {
-                    history.removeAll { $0 == oldValue }
-                    history.insert(oldValue, at: 0)
-                    if history.count > 10 { history = Array(history.prefix(10)) }
+                    addHistoryEntry(text: oldValue, prefix: prefix, suffix: suffix)
                 }
             }
             onChange?(.display)
@@ -162,7 +195,19 @@ final class BlockSettings: ObservableObject, Identifiable {
     @Published var lightBarColorEntries: [ColorEntry] { didSet { onChange?(.display) } }
     /// 深色菜单栏（浅色壁纸）下使用的颜色
     @Published var darkBarColorEntries: [ColorEntry] { didSet { onChange?(.display) } }
-    @Published var history: [String] { didSet { onChange?(.persist) } }
+    @Published var history: [HistoryEntry] { didSet { onChange?(.persist) } }
+    /// 历史保留条数（只统计非收藏记录）；收藏项不会被自动清理。
+    @Published var historyLimit: Int {
+        didSet {
+            let clamped = min(max(historyLimit, 1), 100)
+            if clamped != historyLimit {
+                historyLimit = clamped
+                return
+            }
+            trimHistory()
+            onChange?(.persist)
+        }
+    }
 
     // MARK: - 动态日期时间
 
@@ -208,8 +253,8 @@ final class BlockSettings: ObservableObject, Identifiable {
     /// 设置页输入框实时编辑时置位：更新当前文字但不写历史，避免逐字污染历史。
     private var suppressHistory = false
 
-    /// 设置页「内容」输入框开始编辑时记录基线。
-    private var textEditBaseline: String?
+    /// 设置页「内容」输入框开始编辑时记录基线（连同时的前后缀）。
+    private var textEditBaseline: HistoryEntry?
 
     /// 设置页正文输入框是否正在编辑：轮播定时器据此跳过，避免打断输入。
     private(set) var isEditingText = false
@@ -245,12 +290,23 @@ final class BlockSettings: ObservableObject, Identifiable {
         darkBarColorEntries = snapshot.darkBarColorEntries.isEmpty
             ? [ColorEntry(hex: "#FFFFFF")]
             : snapshot.darkBarColorEntries
-        // 历史：过滤当前值/空值，去重并截断到 10 条
-        var cleanedHistory: [String] = []
-        for item in snapshot.history where item != snapshot.text && !item.isEmpty {
-            if !cleanedHistory.contains(item) { cleanedHistory.append(item) }
+        historyLimit = min(max(snapshot.historyLimit, 1), 100)
+        // 历史：过滤空值/当前值（收藏项除外），同文字去重（收藏优先）
+        var cleanedHistory: [HistoryEntry] = []
+        var seenHistoryIDs = Set<UUID>()
+        for var entry in snapshot.history where !entry.text.isEmpty {
+            if seenHistoryIDs.contains(entry.id) { entry.id = UUID() }
+            seenHistoryIDs.insert(entry.id)
+            if entry.text == snapshot.text && !entry.isPinned { continue }
+            if let index = cleanedHistory.firstIndex(where: { $0.text == entry.text }) {
+                if entry.isPinned && !cleanedHistory[index].isPinned {
+                    cleanedHistory[index] = entry
+                }
+            } else {
+                cleanedHistory.append(entry)
+            }
         }
-        history = Array(cleanedHistory.prefix(10))
+        history = cleanedHistory
         rotationEnabled = snapshot.rotationEnabled
         rotationPaused = snapshot.rotationPaused
         rotationInterval = snapshot.rotationInterval
@@ -259,6 +315,7 @@ final class BlockSettings: ObservableObject, Identifiable {
         dateEnabled = snapshot.dateEnabled
         datePattern = snapshot.datePattern
         calendarOnLeftClick = snapshot.calendarOnLeftClick
+        trimHistory()
     }
 
     var snapshot: BlockSnapshot {
@@ -278,6 +335,7 @@ final class BlockSettings: ObservableObject, Identifiable {
             lightBarColorEntries: lightBarColorEntries,
             darkBarColorEntries: darkBarColorEntries,
             history: history,
+            historyLimit: historyLimit,
             rotationEnabled: rotationEnabled,
             rotationPaused: rotationPaused,
             rotationInterval: rotationInterval,
@@ -300,7 +358,7 @@ final class BlockSettings: ObservableObject, Identifiable {
     func beginTextEditing() {
         isEditingText = true
         guard textEditBaseline == nil else { return }
-        textEditBaseline = text
+        textEditBaseline = HistoryEntry(text: text, prefix: prefix, suffix: suffix)
     }
 
     /// 输入框失焦 / 设置窗口关闭时，把“开始编辑前的当前值”补记一次历史。
@@ -309,18 +367,75 @@ final class BlockSettings: ObservableObject, Identifiable {
         isEditingText = false
         guard let baseline = textEditBaseline else { return }
         textEditBaseline = nil
-        guard !suppressHistory, trackHistory, !baseline.isEmpty, baseline != text else { return }
-        history.removeAll { $0 == baseline || $0 == text }
-        history.insert(baseline, at: 0)
-        if history.count > 10 { history = Array(history.prefix(10)) }
+        guard !suppressHistory, trackHistory,
+              !baseline.text.isEmpty, baseline.text != text else { return }
+        addHistoryEntry(text: baseline.text, prefix: baseline.prefix, suffix: baseline.suffix)
     }
 
-    /// 用于展示的历史列表：始终排除当前值。
-    var displayHistory: [String] { history.filter { $0 != text } }
+    /// 用于展示的历史列表：始终排除当前值（收藏项也会暂时隐藏）。
+    var displayHistory: [HistoryEntry] { history.filter { $0.text != text } }
 
     /// 删除某一条历史。
-    func removeHistory(_ value: String) {
-        history.removeAll { $0 == value }
+    func removeHistory(_ entry: HistoryEntry) {
+        history.removeAll { $0.id == entry.id }
+    }
+
+    /// 应用一条历史：恢复文字、前缀和后缀。
+    func applyHistory(_ entry: HistoryEntry) {
+        guard entry.text != text || entry.prefix != prefix || entry.suffix != suffix else { return }
+
+        let oldText = text
+        let oldPrefix = prefix
+        let oldSuffix = suffix
+
+        // 一次性切换，避免旧值被重复记入历史
+        suppressHistory = true
+        prefix = entry.prefix
+        suffix = entry.suffix
+        text = entry.text
+        suppressHistory = false
+
+        // 应用后该条成为当前值：未收藏的同文字条目已由 text didSet 移除；收藏项保留但从列表隐藏。
+        if trackHistory, !oldText.isEmpty, oldText != entry.text {
+            addHistoryEntry(text: oldText, prefix: oldPrefix, suffix: oldSuffix)
+        }
+        trimHistory()
+    }
+
+    /// 收藏 / 取消收藏。收藏项固定在列表最前，且不会被自动清理。
+    func togglePinned(_ entry: HistoryEntry) {
+        guard let index = history.firstIndex(where: { $0.id == entry.id }) else { return }
+        var updated = history[index]
+        updated.isPinned.toggle()
+        history.remove(at: index)
+        if updated.isPinned {
+            history.insert(updated, at: 0)
+        } else {
+            let insertIndex = history.firstIndex(where: { !$0.isPinned }) ?? history.count
+            history.insert(updated, at: insertIndex)
+        }
+        trimHistory()
+    }
+
+    /// 插入一条历史（自动去重：收藏项优先保留）。
+    private func addHistoryEntry(text: String, prefix: String, suffix: String) {
+        guard !text.isEmpty, text != self.text else { return }
+        // 已有同文字的收藏项时保留收藏项（连同其保存的前后缀）
+        if history.contains(where: { $0.isPinned && $0.text == text }) { return }
+        history.removeAll { !$0.isPinned && $0.text == text }
+        let entry = HistoryEntry(text: text, prefix: prefix, suffix: suffix)
+        // 收藏项永远在最前，新记录插到第一条非收藏记录之前
+        let insertIndex = history.firstIndex(where: { !$0.isPinned }) ?? history.count
+        history.insert(entry, at: insertIndex)
+        trimHistory()
+    }
+
+    /// 按条数上限清理：收藏项全保留且不占名额，非收藏项保留最新的若干条。
+    private func trimHistory() {
+        let pinned = history.filter(\.isPinned)
+        let unpinned = history.filter { !$0.isPinned }
+        let kept = pinned + unpinned.prefix(historyLimit)
+        if kept != history { history = kept }
     }
 
     // MARK: - 轮播
@@ -482,7 +597,8 @@ final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
     /// 设置/备份数据结构版本。修改备份结构时递增，并在 decodeBackup 中做迁移。
-    static let dataVersion = 1
+    /// v2: history 从 [String] 升级为 [HistoryEntry]（文字 + 前后缀 + 收藏），新增 historyLimit。
+    static let dataVersion = 2
 
     /// 恢复默认时需要清理的 UserDefaults 键。
     private static let managedDefaultsKeys = [
@@ -642,10 +758,16 @@ final class AppSettings: ObservableObject {
             return decoded
         }
 
-        var cleanedHistory: [String] = []
+        var cleanedHistory: [HistoryEntry] = []
+        let legacyPrefix = d.string(forKey: "prefix") ?? "["
+        let legacySuffix = d.string(forKey: "suffix") ?? "]"
         for item in d.stringArray(forKey: "history") ?? []
         where item != currentText && !item.isEmpty {
-            if !cleanedHistory.contains(item) { cleanedHistory.append(item) }
+            if !cleanedHistory.contains(where: { $0.text == item }) {
+                cleanedHistory.append(HistoryEntry(text: item,
+                                                   prefix: legacyPrefix,
+                                                   suffix: legacySuffix))
+            }
         }
 
         let rotationItems: [RotationItem]
@@ -660,8 +782,8 @@ final class AppSettings: ObservableObject {
             id: UUID(),
             autosaveName: "SwiftQuoteStatusItem",   // 保留旧版菜单栏位置
             text: currentText,
-            prefix: d.string(forKey: "prefix") ?? "[",
-            suffix: d.string(forKey: "suffix") ?? "]",
+            prefix: legacyPrefix,
+            suffix: legacySuffix,
             trackHistory: d.object(forKey: "trackHistory") as? Bool ?? true,
             maxWidth: d.object(forKey: "maxWidth") as? Double ?? 200,
             fontSize: d.object(forKey: "fontSize") as? Double ?? 13,
@@ -674,6 +796,7 @@ final class AppSettings: ObservableObject {
             darkBarColorEntries: loadEntries("darkBarColorEntries",
                                              fallback: [ColorEntry(hex: "#FFFFFF")]),
             history: Array(cleanedHistory.prefix(10)),
+            historyLimit: 10,
             rotationEnabled: d.object(forKey: "rotationEnabled") as? Bool ?? false,
             rotationPaused: d.object(forKey: "rotationPaused") as? Bool ?? false,
             rotationInterval: RotationInterval(rawValue: d.string(forKey: "rotationInterval") ?? "")
@@ -751,7 +874,8 @@ final class AppSettings: ObservableObject {
             blockItems = array
         }
 
-        // 目前只有版本 1；未来新增字段时，在此按 schemaVersion 做必要迁移。
+        // v1 -> v2：历史项由字符串升级为对象；BlockSnapshot 同时接受两种格式。
+        // 未来新增字段时，在此按 schemaVersion 做必要迁移。
         // BlockSnapshot 对缺失字段使用默认值、对未知字段自动忽略，因此大多数升级无需额外迁移。
 
         if let payload {

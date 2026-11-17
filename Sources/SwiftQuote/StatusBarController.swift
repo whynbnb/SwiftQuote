@@ -1,9 +1,9 @@
 import AppKit
 
-/// 一个历史菜单项携带：属于哪个块 + 要应用的文字。
+/// 一个历史菜单项携带：属于哪个块 + 要应用的历史记录。
 private struct HistoryMenuPayload {
     let blockID: UUID
-    let value: String
+    let entry: HistoryEntry
 }
 
 @MainActor
@@ -280,14 +280,15 @@ final class StatusBarController: NSObject, ObservableObject {
         item.menu = nil
     }
 
-    private func historyHeaderMenu(_ menu: NSMenu, block: BlockSettings, items: [String]) {
+    private func historyHeaderMenu(_ menu: NSMenu, block: BlockSettings, items: [HistoryEntry]) {
         let header = NSMenuItem(title: settings.strings.historyHeader, action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
-        for item in items {
-            let mi = NSMenuItem(title: item, action: #selector(onHistoryItem(_:)), keyEquivalent: "")
+        for entry in items {
+            let title = entry.isPinned ? "★ \(entry.displayValue)" : entry.displayValue
+            let mi = NSMenuItem(title: title, action: #selector(onHistoryItem(_:)), keyEquivalent: "")
             mi.target = self
-            mi.representedObject = HistoryMenuPayload(blockID: block.id, value: item)
+            mi.representedObject = HistoryMenuPayload(blockID: block.id, entry: entry)
             menu.addItem(mi)
         }
         let clear = NSMenuItem(title: settings.strings.clearHistory,
@@ -329,7 +330,7 @@ final class StatusBarController: NSObject, ObservableObject {
     @objc private func onHistoryItem(_ sender: NSMenuItem) {
         guard let payload = sender.representedObject as? HistoryMenuPayload,
               let block = block(id: payload.blockID) else { return }
-        block.text = payload.value
+        block.applyHistory(payload.entry)
     }
 
     @objc private func onClearHistory(_ sender: NSMenuItem) {

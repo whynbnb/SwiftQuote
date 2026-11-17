@@ -454,12 +454,13 @@ private struct BlockTextSettingsView: View {
                                     .foregroundStyle(.secondary)
                                 Button(s.apply) {
                                     block.dateEnabled = false
-                                    block.prefix = preset.prefix
-                                    block.suffix = preset.suffix
                                     let value = preset.text(isChinese)
+                                    // 先切文字：旧值会以旧前后缀进入历史；再套用新前后缀
                                     if !value.isEmpty {
                                         block.text = value
                                     }
+                                    block.prefix = preset.prefix
+                                    block.suffix = preset.suffix
                                 }
                                 .controlSize(.small)
                             }
@@ -774,10 +775,11 @@ struct HistorySettingsView: View {
 private struct BlockHistorySettingsView: View {
     @EnvironmentObject var settings: AppSettings
     @ObservedObject var block: BlockSettings
+    @State private var query = ""
 
     var body: some View {
         let s = settings.strings
-        let items = block.displayHistory   // 历史列表不含当前值
+        let items = filteredHistory
         VStack(alignment: .leading, spacing: 12) {
             BlockPickerRow()
 
@@ -799,11 +801,39 @@ private struct BlockHistorySettingsView: View {
                 }
             }
 
+            HStack(spacing: 8) {
+                NoAutofillTextFieldView(placeholder: s.searchHistory, text: $query)
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(s.clearSearch)
+                }
+            }
+
+            HStack {
+                Text(s.historyLimit)
+                    .frame(width: 60, alignment: .trailing)
+                Stepper(value: $block.historyLimit, in: 1...100) {
+                    Text("\(block.historyLimit)")
+                        .monospacedDigit()
+                }
+                Spacer()
+            }
+
+            Text(s.historyHint)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             // 当前值单独显示（不混在历史列表里）
             if !block.text.isEmpty {
                 GroupBox(s.current) {
                     HStack {
-                        Text(block.text)
+                        Text(block.prefix + block.text + block.suffix)
                             .lineLimit(1)
                         Spacer()
                     }
@@ -815,24 +845,45 @@ private struct BlockHistorySettingsView: View {
                 Spacer()
                 HStack {
                     Spacer()
-                    Text(s.noHistory)
+                    Text(query.isEmpty ? s.noHistory : s.noSearchResults)
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
                 Spacer()
             } else {
                 List {
-                    ForEach(items, id: \.self) { item in
-                        HStack {
-                            Text(item)
-                                .lineLimit(1)
+                    ForEach(items) { entry in
+                        HStack(spacing: 8) {
+                            Button {
+                                block.togglePinned(entry)
+                            } label: {
+                                Image(systemName: entry.isPinned ? "pin.fill" : "pin")
+                                    .foregroundStyle(entry.isPinned ? Color.orange : Color.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help(entry.isPinned ? s.unpin : s.pin)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.text)
+                                    .lineLimit(1)
+                                if entry.displayValue != entry.text {
+                                    Text(entry.displayValue)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+
                             Spacer()
+
                             Button(s.apply) {
-                                block.text = item   // 切换：旧值进入历史，该值移出历史
+                                block.applyHistory(entry)
                             }
                             .controlSize(.small)
+                            .disabled(block.dateEnabled)
+
                             Button {
-                                block.removeHistory(item)
+                                block.removeHistory(entry)
                             } label: {
                                 Image(systemName: "trash")
                             }
@@ -849,6 +900,18 @@ private struct BlockHistorySettingsView: View {
             }
         }
         .padding()
+    }
+
+    /// 搜索文字、前缀或后缀；收藏项天然排在历史数组最前。
+    private var filteredHistory: [HistoryEntry] {
+        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let items = block.displayHistory
+        guard !value.isEmpty else { return items }
+        return items.filter {
+            $0.text.localizedCaseInsensitiveContains(value)
+                || $0.prefix.localizedCaseInsensitiveContains(value)
+                || $0.suffix.localizedCaseInsensitiveContains(value)
+        }
     }
 }
 

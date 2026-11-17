@@ -95,7 +95,7 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
         historySection?.removeFromSuperview()
         historySection = nil
 
-        let items: [String]
+        let items: [HistoryEntry]
         if let block, !block.dateEnabled, block.trackHistory {
             items = Array(block.displayHistory.prefix(Self.historyLimit))
         } else {
@@ -130,9 +130,9 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
 
         for item in items {
             let row = HistoryRowView(
-                value: item,
-                onPick: { [weak self] value in self?.pick(value) },
-                onDelete: { [weak self] value in self?.delete(value) })
+                entry: item,
+                onPick: { [weak self] entry in self?.pick(entry) },
+                onDelete: { [weak self] entry in self?.delete(entry) })
             row.translatesAutoresizingMaskIntoConstraints = false
             rows.addArrangedSubview(row)
             NSLayoutConstraint.activate([
@@ -168,15 +168,15 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
         setPanelHeight(Self.fieldHeight + historyHeight)
     }
 
-    private func pick(_ value: String) {
+    private func pick(_ entry: HistoryEntry) {
         guard let block, !block.dateEnabled else { return }
-        block.text = value   // didSet 会把旧的当前值记入历史，并把该值移出历史
+        block.applyHistory(entry)
         dismiss()
     }
 
-    private func delete(_ value: String) {
+    private func delete(_ entry: HistoryEntry) {
         guard let block, !block.dateEnabled else { return }
-        block.removeHistory(value)
+        block.removeHistory(entry)
         rebuildHistory()
     }
 
@@ -329,19 +329,22 @@ private final class PassthroughLabel: NSTextField {
 
 /// 历史记录中的一行：悬停高亮；点击应用；右侧按钮单独删除。
 private final class HistoryRowView: NSView {
-    private let value: String
-    private let onPick: (String) -> Void
-    private let onDelete: (String) -> Void
+    private let entry: HistoryEntry
+    private let onPick: (HistoryEntry) -> Void
+    private let onDelete: (HistoryEntry) -> Void
     private var trackingArea: NSTrackingArea?
 
-    init(value: String, onPick: @escaping (String) -> Void, onDelete: @escaping (String) -> Void) {
-        self.value = value
+    init(entry: HistoryEntry,
+         onPick: @escaping (HistoryEntry) -> Void,
+         onDelete: @escaping (HistoryEntry) -> Void) {
+        self.entry = entry
         self.onPick = onPick
         self.onDelete = onDelete
         super.init(frame: .zero)
         wantsLayer = true
 
-        let label = PassthroughLabel(labelWithString: value)
+        let title = entry.isPinned ? "★ \(entry.displayValue)" : entry.displayValue
+        let label = PassthroughLabel(labelWithString: title)
         label.font = .systemFont(ofSize: 13)
         label.textColor = .labelColor
         label.lineBreakMode = .byTruncatingTail
@@ -374,7 +377,7 @@ private final class HistoryRowView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) 未实现") }
 
     @objc private func deleteTapped() {
-        onDelete(value)
+        onDelete(entry)
     }
 
     override func updateTrackingAreas() {
@@ -396,7 +399,7 @@ private final class HistoryRowView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        onPick(value)
+        onPick(entry)
     }
 
     override func resetCursorRects() {

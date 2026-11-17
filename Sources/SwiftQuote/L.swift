@@ -89,8 +89,8 @@ struct L {
           "Rotation is disabled while dynamic date/time is on. Turn it off to use rotation.")
     }
     var dateHistoryHint: String {
-        t("日期时间模式下不记录历史；关闭日期时间后继续使用原有历史。",
-          "History is not recorded in date/time mode; the existing history is kept for when you turn it off.")
+        t("日期时间模式下历史不能应用；关闭日期时间后继续使用原有历史。",
+          "History cannot be applied while date/time mode is on; the existing history is kept for when you turn it off.")
     }
     var groupAppearance: String { t("主题", "Appearance") }
     var appearanceSystem: String { t("跟随系统", "System") }
@@ -188,6 +188,16 @@ struct L {
     var noHistory: String { t("暂无历史记录", "No history yet") }
     var current: String   { t("当前", "Current") }
     var deleteHistoryItem: String { t("删除该记录", "Delete") }
+    var historyLimit: String { t("保留条数", "History Limit") }
+    var searchHistory: String { t("搜索历史", "Search History") }
+    var clearSearch: String { t("清除搜索", "Clear Search") }
+    var noSearchResults: String { t("没有匹配的历史记录", "No matching history") }
+    var pin: String { t("收藏并置顶", "Pin to Top") }
+    var unpin: String { t("取消收藏", "Unpin") }
+    var historyHint: String {
+        t("收藏项固定在最前、不会被自动清理，也不占用保留条数；应用历史时会一并恢复前缀和后缀。",
+          "Pinned entries stay at the top, are never auto-removed, and do not count toward the limit. Applying history restores its prefix and suffix.")
+    }
 
     // MARK: 轮播
     var tabRotation: String { t("轮播", "Rotation") }
