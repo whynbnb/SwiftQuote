@@ -40,6 +40,64 @@ extension HistoryEntry {
     }
 }
 
+/// 字重：字族支持多少档就选最近的可用字面。
+enum FontWeight: String, CaseIterable, Identifiable, Codable {
+    case ultraLight, thin, light, regular, medium, semibold, bold, heavy, black
+
+    var id: String { rawValue }
+
+    /// NSFontManager 的 weight 参数范围 0...15
+    var managerWeight: Int {
+        switch self {
+        case .ultraLight: return 0
+        case .thin:       return 1
+        case .light:      return 2
+        case .regular:    return 5
+        case .medium:     return 6
+        case .semibold:   return 7
+        case .bold:       return 9
+        case .heavy:      return 11
+        case .black:      return 15
+        }
+    }
+
+    var nsWeight: NSFont.Weight {
+        switch self {
+        case .ultraLight: return .ultraLight
+        case .thin:       return .thin
+        case .light:      return .light
+        case .regular:    return .regular
+        case .medium:     return .medium
+        case .semibold:   return .semibold
+        case .bold:       return .bold
+        case .heavy:      return .heavy
+        case .black:      return .black
+        }
+    }
+
+    /// 旧版本只有 bold 布尔值：导出时用它保持旧版本可读。
+    var isBoldLike: Bool {
+        switch self {
+        case .semibold, .bold, .heavy, .black: return true
+        default: return false
+        }
+    }
+
+    func label(_ isChinese: Bool) -> String {
+        switch self {
+        case .ultraLight: return isChinese ? "超细" : "Ultra Light"
+        case .thin:       return isChinese ? "纤细" : "Thin"
+        case .light:      return isChinese ? "细体" : "Light"
+        case .regular:    return isChinese ? "常规" : "Regular"
+        case .medium:     return isChinese ? "中等" : "Medium"
+        case .semibold:   return isChinese ? "半粗" : "Semibold"
+        case .bold:       return isChinese ? "粗体" : "Bold"
+        case .heavy:      return isChinese ? "特粗" : "Heavy"
+        case .black:      return isChinese ? "极粗" : "Black"
+        }
+    }
+}
+
 /// 菜单栏块的持久化快照。运行时状态（菜单栏深浅等）不写在这里。
 struct BlockSnapshot: Codable, Equatable {
     var id: UUID
@@ -51,6 +109,8 @@ struct BlockSnapshot: Codable, Equatable {
     var maxWidth: Double
     var fontSize: Double
     var bold: Bool
+    var fontWeight: FontWeight
+    var tracking: Double
     var fontFamily: String?
     var colorEntries: [ColorEntry]
     var adaptiveColors: Bool
@@ -84,6 +144,8 @@ struct BlockSnapshot: Codable, Equatable {
             maxWidth: 200,
             fontSize: 13,
             bold: true,
+            fontWeight: .bold,
+            tracking: 0,
             fontFamily: nil,
             colorEntries: [ColorEntry(hex: "#FFFFFF")],
             adaptiveColors: false,
@@ -119,7 +181,11 @@ extension BlockSnapshot {
         trackHistory = (try? c.decode(Bool.self, forKey: .trackHistory)) ?? true
         maxWidth = (try? c.decode(Double.self, forKey: .maxWidth)) ?? 200
         fontSize = (try? c.decode(Double.self, forKey: .fontSize)) ?? 13
-        bold = (try? c.decode(Bool.self, forKey: .bold)) ?? true
+        let legacyBold = (try? c.decode(Bool.self, forKey: .bold)) ?? true
+        bold = legacyBold
+        fontWeight = (try? c.decode(FontWeight.self, forKey: .fontWeight))
+            ?? (legacyBold ? .bold : .regular)
+        tracking = (try? c.decode(Double.self, forKey: .tracking)) ?? 0
         fontFamily = try? c.decode(String.self, forKey: .fontFamily)
         colorEntries = (try? c.decode([ColorEntry].self, forKey: .colorEntries))
             ?? [ColorEntry(hex: "#FFFFFF")]
@@ -184,7 +250,10 @@ final class BlockSettings: ObservableObject, Identifiable {
     @Published var trackHistory: Bool { didSet { onChange?(.persist) } }
     @Published var maxWidth: Double { didSet { onChange?(.display) } }
     @Published var fontSize: Double { didSet { onChange?(.display) } }
-    @Published var bold: Bool { didSet { onChange?(.display) } }
+    /// 字重（9 档）；旧版本 bold 布尔值会迁移到这里。
+    @Published var fontWeight: FontWeight { didSet { onChange?(.display) } }
+    /// 字距（points），应用到菜单栏和预览。
+    @Published var tracking: Double { didSet { onChange?(.display) } }
     /// 自定义字体族；nil = 系统默认
     @Published var fontFamily: String? { didSet { onChange?(.display) } }
     /// 每个字符一个颜色，不足时循环使用
@@ -275,7 +344,10 @@ final class BlockSettings: ObservableObject, Identifiable {
         fontSize = snapshot.fontSize.isFinite
             ? min(max(snapshot.fontSize, 9), 21)
             : 13
-        bold = snapshot.bold
+        fontWeight = snapshot.fontWeight
+        tracking = snapshot.tracking.isFinite
+            ? min(max(snapshot.tracking, -2), 5)
+            : 0
         // 字体族：只接受当前系统仍可用的字体，否则回退系统默认
         fontFamily = snapshot.fontFamily.flatMap {
             AppSettings.availableFontFamilies.contains($0) ? $0 : nil
@@ -328,7 +400,9 @@ final class BlockSettings: ObservableObject, Identifiable {
             trackHistory: trackHistory,
             maxWidth: maxWidth,
             fontSize: fontSize,
-            bold: bold,
+            bold: fontWeight.isBoldLike,
+            fontWeight: fontWeight,
+            tracking: tracking,
             fontFamily: fontFamily,
             colorEntries: colorEntries,
             adaptiveColors: adaptiveColors,
@@ -503,26 +577,24 @@ final class BlockSettings: ObservableObject, Identifiable {
         dateFormatter = formatter
     }
 
-    /// 按当前字体族/粗体/字号解析实际字体；字体不可用时回退系统字体。
+    /// 按当前字体族/字重/字号解析实际字体；字体不可用时回退系统字体。
     func resolvedFont(size: CGFloat) -> NSFont {
         if let fontFamily {
-            let traits: NSFontTraitMask = bold ? [.boldFontMask] : []
             if let custom = NSFontManager.shared.font(withFamily: fontFamily,
-                                                      traits: traits,
-                                                      weight: 5,
+                                                      traits: [],
+                                                      weight: fontWeight.managerWeight,
                                                       size: size) {
                 return custom
             }
-            // 字体族没有独立粗体时，退回同族常规字重并尝试合成粗体
-            if bold,
-               let regular = NSFontManager.shared.font(withFamily: fontFamily,
+            // 该字族没有请求的字重时，退回同族常规字重
+            if let regular = NSFontManager.shared.font(withFamily: fontFamily,
                                                        traits: [],
                                                        weight: 5,
                                                        size: size) {
-                return NSFontManager.shared.convert(regular, toHaveTrait: .boldFontMask)
+                return regular
             }
         }
-        return bold ? .boldSystemFont(ofSize: size) : .systemFont(ofSize: size)
+        return .systemFont(ofSize: size, weight: fontWeight.nsWeight)
     }
 
     var font: NSFont { resolvedFont(size: fontSize) }
@@ -598,7 +670,8 @@ final class AppSettings: ObservableObject {
 
     /// 设置/备份数据结构版本。修改备份结构时递增，并在 decodeBackup 中做迁移。
     /// v2: history 从 [String] 升级为 [HistoryEntry]（文字 + 前后缀 + 收藏），新增 historyLimit。
-    static let dataVersion = 2
+    /// v3: 新增 fontWeight（9 档）与 tracking（字距），bold 保留用于旧版本兼容。
+    static let dataVersion = 3
 
     /// 恢复默认时需要清理的 UserDefaults 键。
     private static let managedDefaultsKeys = [
@@ -778,6 +851,8 @@ final class AppSettings: ObservableObject {
             rotationItems = []
         }
 
+        let legacyBold = d.object(forKey: "bold") as? Bool ?? true
+
         return BlockSnapshot(
             id: UUID(),
             autosaveName: "SwiftQuoteStatusItem",   // 保留旧版菜单栏位置
@@ -787,7 +862,9 @@ final class AppSettings: ObservableObject {
             trackHistory: d.object(forKey: "trackHistory") as? Bool ?? true,
             maxWidth: d.object(forKey: "maxWidth") as? Double ?? 200,
             fontSize: d.object(forKey: "fontSize") as? Double ?? 13,
-            bold: d.object(forKey: "bold") as? Bool ?? true,
+            bold: legacyBold,
+            fontWeight: legacyBold ? .bold : .regular,
+            tracking: 0,
             fontFamily: family,
             colorEntries: colors,
             adaptiveColors: d.object(forKey: "adaptiveColors") as? Bool ?? false,
@@ -875,6 +952,7 @@ final class AppSettings: ObservableObject {
         }
 
         // v1 -> v2：历史项由字符串升级为对象；BlockSnapshot 同时接受两种格式。
+        // v2 -> v3：新增 fontWeight/tracking；缺失时由旧 bold 推导，tracking 默认 0。
         // 未来新增字段时，在此按 schemaVersion 做必要迁移。
         // BlockSnapshot 对缺失字段使用默认值、对未知字段自动忽略，因此大多数升级无需额外迁移。
 
@@ -1009,8 +1087,8 @@ final class AppSettings: ObservableObject {
     /// 判断一个块对象是否包含至少一个已知内容字段。
     private static func hasRecognizedBlockContent(_ dict: [String: Any]) -> Bool {
         let keys = [
-            "text", "prefix", "suffix", "fontFamily", "colorEntries",
-            "history", "rotationItems", "datePattern",
+            "text", "prefix", "suffix", "fontFamily", "fontWeight", "fontSize",
+            "tracking", "colorEntries", "history", "rotationItems", "datePattern",
         ]
         return keys.contains { key in
             guard let value = dict[key] else { return false }

@@ -351,11 +351,29 @@ private struct BlockTextSettingsView: View {
                             .pickerStyle(.menu)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        Toggle(s.bold, isOn: $block.bold)
+                        HStack {
+                            Text(s.fontWeight)
+                                .frame(width: 60, alignment: .trailing)
+                            Picker("", selection: $block.fontWeight) {
+                                ForEach(FontWeight.allCases) { weight in
+                                    Text(weight.label(isChinese)).tag(weight)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         HStack {
                             Text(s.fontSize)
                             Slider(value: $block.fontSize, in: 9...21, step: 0.5)
                             Text("\(block.fontSize, specifier: "%.1f")")
+                                .monospacedDigit()
+                                .frame(width: 34, alignment: .trailing)
+                        }
+                        HStack {
+                            Text(s.tracking)
+                            Slider(value: $block.tracking, in: -2...5, step: 0.1)
+                            Text("\(block.tracking, specifier: "%.1f")")
                                 .monospacedDigit()
                                 .frame(width: 34, alignment: .trailing)
                         }
@@ -365,6 +383,26 @@ private struct BlockTextSettingsView: View {
                             Text("\(Int(block.maxWidth))")
                                 .monospacedDigit()
                                 .frame(width: 34, alignment: .trailing)
+                        }
+                        HStack {
+                            Text(s.preview)
+                                .frame(width: 60, alignment: .trailing)
+                            if block.dateEnabled {
+                                TimelineView(.periodic(from: .now, by: 1)) { context in
+                                    Text(block.displayText(at: context.date))
+                                        .font(block.swiftUIFont(size: 13))
+                                        .tracking(block.tracking)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            } else {
+                                Text(block.displayText.isEmpty ? "—" : block.displayText)
+                                    .font(block.swiftUIFont(size: 13))
+                                    .tracking(block.tracking)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
                         }
                     }
                     .padding(8)
@@ -415,12 +453,14 @@ private struct BlockTextSettingsView: View {
                                 TimelineView(.periodic(from: .now, by: 1)) { context in
                                     Text(block.displayText(at: context.date))
                                         .font(block.swiftUIFont(size: 13))
+                                        .tracking(block.tracking)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
                             } else {
                                 Text(block.displayText)
                                     .font(block.swiftUIFont(size: 13))
+                                    .tracking(block.tracking)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
@@ -451,6 +491,7 @@ private struct BlockTextSettingsView: View {
                                 Spacer()
                                 Text(preset.prefix + preset.text(isChinese) + preset.suffix)
                                     .font(block.swiftUIFont(size: 13))
+                                    .tracking(block.tracking)
                                     .foregroundStyle(.secondary)
                                 Button(s.apply) {
                                     block.dateEnabled = false
@@ -566,7 +607,8 @@ private struct BlockColorsSettingsView: View {
     }
 
     private var preview: some View {
-        HStack(spacing: 0) {
+        // 逐字符颜色需要独立 Text；用 HStack 间距模拟字距（单个字符的 .tracking 不生效）。
+        HStack(spacing: CGFloat(block.tracking)) {
             let colors = block.effectiveNSColors
             let full = block.displayText
             ForEach(Array(full.enumerated()), id: \.offset) { i, ch in
@@ -722,6 +764,7 @@ private struct BlockRotationSettingsView: View {
                                 TextField(s.rotationItemPlaceholder, text: $item.text)
                                     .textFieldStyle(.roundedBorder)
                                     .font(block.swiftUIFont(size: 13))
+                                    .tracking(block.tracking)
                                 if item.text == block.text && !item.text.isEmpty {
                                     Text(s.current)
                                         .font(.caption2)
@@ -921,6 +964,22 @@ private extension BlockSettings {
         if fontFamily != nil {
             return .custom(resolvedFont(size: size).fontName, size: size)
         }
-        return .system(size: size, weight: bold ? .bold : .regular)
+        return .system(size: size, weight: fontWeight.swiftUIWeight)
+    }
+}
+
+private extension FontWeight {
+    var swiftUIWeight: Font.Weight {
+        switch self {
+        case .ultraLight: return .ultraLight
+        case .thin:       return .thin
+        case .light:      return .light
+        case .regular:    return .regular
+        case .medium:     return .medium
+        case .semibold:   return .semibold
+        case .bold:       return .bold
+        case .heavy:      return .heavy
+        case .black:      return .black
+        }
     }
 }
