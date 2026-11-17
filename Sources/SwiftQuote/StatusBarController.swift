@@ -38,7 +38,10 @@ final class StatusBarController: NSObject, ObservableObject {
         button.imagePosition = .imageLeading
 
         // 监听菜单栏深浅变化（壁纸/系统外观改变时系统会自动调整菜单栏外观）
-        settings.menuBarIsDark = Self.isDarkAppearance(button.effectiveAppearance)
+        let initialDark = Self.isDarkAppearance(button.effectiveAppearance)
+        if settings.menuBarIsDark != initialDark {
+            settings.menuBarIsDark = initialDark
+        }
         appearanceObservation = button.observe(\.effectiveAppearance, options: [.new]) { [weak self] button, _ in
             // KVO 回调在主线程触发；Swift 6 下需显式声明主actor隔离
             MainActor.assumeIsolated {
@@ -65,8 +68,12 @@ final class StatusBarController: NSObject, ObservableObject {
 
     @objc private func refreshTitle() {
         guard let button = statusItem?.button else { return }
-        // 刷新前同步菜单栏当前深浅状态（开关切换时确保用对颜色）
-        settings.menuBarIsDark = Self.isDarkAppearance(button.effectiveAppearance)
+        // 刷新前同步菜单栏当前深浅状态（开关切换时确保用对颜色）。
+        // 先判等再写，避免 @Published 在每次标题刷新时都触发设置页重绘。
+        let isDark = Self.isDarkAppearance(button.effectiveAppearance)
+        if settings.menuBarIsDark != isDark {
+            settings.menuBarIsDark = isDark
+        }
         let str = NSMutableAttributedString()
         let colors = settings.effectiveNSColors
         let full = settings.displayText

@@ -206,8 +206,10 @@ final class AppSettings: ObservableObject {
         colorEntries.compactMap { NSColor(hex: $0.hex) }
     }
 
-    /// 菜单栏当前是否为深色（浅色壁纸下系统会把菜单栏压暗）
-    var menuBarIsDark = false
+    /// 菜单栏当前是否为深色（浅色壁纸下系统会把菜单栏压暗）。
+    /// 用 @Published 让设置页的颜色预览能随菜单栏深浅变化实时刷新；
+    /// 赋值处需先判等，避免每次刷新标题都触发无意义的 SwiftUI 重绘。
+    @Published var menuBarIsDark = false
 
     /// 显示内容变化时的回调（由 StatusBarController 设置）
     var onDisplayChange: (() -> Void)?
