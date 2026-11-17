@@ -46,6 +46,7 @@ final class NoAutofillTextField: NSTextField {
 struct NoAutofillTextFieldView: NSViewRepresentable {
     let placeholder: String
     @Binding var text: String
+    var font: NSFont = .systemFont(ofSize: NSFont.systemFontSize)
     var onBeginEditing: (() -> Void)?
     var onEndEditing: (() -> Void)?
 
@@ -60,7 +61,7 @@ struct NoAutofillTextFieldView: NSViewRepresentable {
         field.placeholderString = placeholder
         field.isBezeled = true
         field.bezelStyle = .roundedBezel
-        field.font = AppSettings.shared.resolvedFont(size: NSFont.systemFontSize)
+        field.font = font
         field.contentType = .oneTimeCode
         field.delegate = context.coordinator
         field.setAccessibilityLabel(placeholder)
@@ -73,7 +74,6 @@ struct NoAutofillTextFieldView: NSViewRepresentable {
         context.coordinator.text = $text
         context.coordinator.onBeginEditing = onBeginEditing
         context.coordinator.onEndEditing = onEndEditing
-        let font = AppSettings.shared.resolvedFont(size: NSFont.systemFontSize)
         if field.font?.fontName != font.fontName || field.font?.pointSize != font.pointSize {
             field.font = font
         }

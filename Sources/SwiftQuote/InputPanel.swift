@@ -10,6 +10,12 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
     private let bg = NSVisualEffectView()
     private var historySection: NSView?
 
+    /// 当前面板正在编辑的菜单栏块（可复用面板，切换块时更新）。
+    private var block: BlockSettings?
+
+    /// 当前为哪个块挂起了轮播；块可能在面板复用期间切换，需单独记录。
+    private var rotationSuspendedBlockID: UUID?
+
     /// 隐藏后的回调：外部据此释放本面板（连同 NSTextField），回收视图树。
     var onDismiss: (() -> Void)?
 
@@ -54,7 +60,7 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
         textField.isBezeled = false
         textField.drawsBackground = false
         textField.focusRingType = .none
-        textField.font = settings.resolvedFont(size: 14)
+        textField.font = .systemFont(ofSize: 14)
         textField.delegate = self
         textField.translatesAutoresizingMaskIntoConstraints = false
         bg.addSubview(textField)
@@ -89,7 +95,12 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
         historySection?.removeFromSuperview()
         historySection = nil
 
-        let items = settings.trackHistory ? Array(settings.displayHistory.prefix(Self.historyLimit)) : []
+        let items: [String]
+        if let block, block.trackHistory {
+            items = Array(block.displayHistory.prefix(Self.historyLimit))
+        } else {
+            items = []
+        }
         guard !items.isEmpty else {
             setPanelHeight(Self.fieldHeight)
             return
@@ -158,12 +169,14 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
     }
 
     private func pick(_ value: String) {
-        settings.text = value   // didSet 会把旧的当前值记入历史，并把该值移出历史
+        guard let block else { return }
+        block.text = value   // didSet 会把旧的当前值记入历史，并把该值移出历史
         dismiss()
     }
 
     private func delete(_ value: String) {
-        settings.removeHistory(value)
+        guard let block else { return }
+        block.removeHistory(value)
         rebuildHistory()
     }
 
@@ -190,9 +203,21 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
 
     // MARK: - 显示 / 提交
 
-    func show(near button: NSStatusBarButton?) {
+    func show(block: BlockSettings, near button: NSStatusBarButton?) {
         dismissID += 1   // 取消可能待执行的 onDismiss
-        textField.stringValue = settings.text
+
+        // 复用面板编辑另一个块时，先恢复上一个块被挂起的轮播
+        if let previous = rotationSuspendedBlockID, previous != block.id {
+            RotationController.shared.resume(blockID: previous)
+            rotationSuspendedBlockID = nil
+        }
+
+        self.block = block
+        textField.placeholderString = settings.strings.inputPlaceholder
+        textField.font = block.resolvedFont(size: 14)
+        textField.stringValue = block.text
+        rebuildHistory()
+
         if let button, let window = button.window {
             var f = frame
             f.origin.x = window.frame.origin.x
@@ -212,7 +237,8 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
         makeFirstResponder(textField)
         textField.selectText(nil)
         startMouseMonitors()
-        RotationController.shared.suspend()   // 编辑期间不要自动切换文字
+        RotationController.shared.suspend(block: block)   // 编辑期间不要自动切换文字
+        rotationSuspendedBlockID = block.id
     }
 
     @objc private func onResignKey() {
@@ -223,8 +249,8 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
 
     private func commit() {
         let value = textField.stringValue
-        if !value.isEmpty, value != settings.text {
-            settings.text = value   // didSet 处理历史
+        if let block, !value.isEmpty, value != block.text {
+            block.text = value   // didSet 处理历史
         }
         dismiss()
     }
@@ -234,7 +260,11 @@ final class InputPanel: NSPanel, NSTextFieldDelegate {
     private func dismiss() {
         stopMouseMonitors()
         orderOut(nil)
-        RotationController.shared.resume()   // 关闭输入面板后恢复自动切换
+        // 只恢复本次面板挂起的块；面板复用切换块时不会误恢复其他块。
+        if let id = rotationSuspendedBlockID {
+            RotationController.shared.resume(blockID: id)
+            rotationSuspendedBlockID = nil
+        }
         dismissID += 1
         let id = dismissID
         DispatchQueue.main.async { [weak self] in

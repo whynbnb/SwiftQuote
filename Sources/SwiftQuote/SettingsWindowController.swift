@@ -21,6 +21,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         let views: [() -> NSViewController] = [
             { makeHosting(GeneralSettingsView()) },
+            { makeHosting(BlocksSettingsView()) },
             { makeHosting(TextSettingsView()) },
             { makeHosting(ColorsSettingsView()) },
             { makeHosting(RotationSettingsView()) },
@@ -28,6 +29,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ]
         let tabInfo: [(String, String)] = [
             (s.tabGeneral, "gearshape"),
+            (s.tabBlocks, "menubar.rectangle"),
             (s.tabText, "textformat"),
             (s.tabColors, "paintpalette"),
             (s.tabRotation, "arrow.triangle.2.circlepath"),
@@ -71,6 +73,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             guard let self else { return }
             let labels = [
                 settings.strings.tabGeneral,
+                settings.strings.tabBlocks,
                 settings.strings.tabText,
                 settings.strings.tabColors,
                 settings.strings.tabRotation,

@@ -35,8 +35,9 @@
 
 ## Features
 
-- **Custom text in the menu bar** — left-click for the menu, right-click to edit instantly
-- **Rich styling** — prefix/suffix, font size, bold, per-character colors (multiple colors cycle through characters), max width limit
+- **Multiple menu bar blocks** — add any number of independent blocks; each has its own text, style, colors, rotation, and history
+- **Custom text in the menu bar** — left-click for the menu, right-click to edit the clicked block
+- **Rich styling per block** — prefix/suffix, font size, bold, per-character colors (multiple colors cycle through characters), max width limit
 - **Custom font** — choose any installed font family, or keep the system default
 - **Adaptive colors** — maintain separate palettes for light/dark menu bars; colors switch automatically as the menu bar appearance changes (with a reset-to-default button)
 - **Text presets** — one-click templates like "Aloha!", "Do not disturb", "Coffee"
@@ -65,9 +66,10 @@ Or open `SwiftQuote.xcodeproj` in Xcode and run (the project is generated from `
 
 ## Usage
 
-- **Right-click** the menu bar text to edit it in place (`⏎` to apply, `Esc` to cancel); recent history is shown below the field — click an entry to apply it, or use the × button to delete it
+- **Right-click** a menu bar block to edit it in place (`⏎` to apply, `Esc` to cancel); that block's recent history is shown below the field — click an entry to apply it, or use the × button to delete it
+- **⌘-drag** menu bar blocks to rearrange them; positions are saved per block
 - **Left-click** for the menu: Input…, Settings…, track history toggle, launch-at-login toggle, recent history (up to 5), rotation controls when enabled (Next / Pause), About (with version), Restart, Quit
-- Settings has five tabs: **General** (theme, language & startup), **Text** (content, prefix/suffix, font family, size, bold, presets), **Colors** (per-character colors, adaptive menu bar palettes), **Rotation** (group texts, interval/order, enable, pause/next), **History** (current text shown separately; delete entries individually)
+- Settings has six tabs: **General** (theme, language & startup), **Blocks** (add/delete/select menu bar blocks), **Text** (content, prefix/suffix, font family, size, bold, presets for the current block), **Colors** (per-character colors, adaptive menu bar palettes), **Rotation** (group texts, interval/order, enable, pause/next), **History** (current text shown separately; delete entries individually)
 
 ## License
 

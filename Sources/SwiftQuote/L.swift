@@ -33,9 +33,24 @@ struct L {
 
     // MARK: 设置窗口 Tab
     var tabGeneral: String { t("通用", "General") }
+    var tabBlocks: String { t("菜单栏块", "Blocks") }
     var tabText: String { t("文字", "Text") }
     var tabColors: String  { t("颜色", "Colors") }
     var tabHistory: String { t("历史记录", "History") }
+
+    // MARK: 菜单栏块
+    var block: String       { t("块", "Block") }
+    var addBlock: String    { t("添加块", "Add Block") }
+    var deleteBlock: String { t("删除块", "Delete Block") }
+    var newBlockText: String { t("新块", "New") }
+    var blocksHint: String {
+        t("每个块在菜单栏独立显示，文字、样式、颜色、轮播和历史互不影响。",
+          "Each block is an independent menu bar item with its own text, style, colors, rotation, and history.")
+    }
+    var blocksPositionHint: String {
+        t("按住 ⌘ 拖动菜单栏块可调整位置，位置会随块保存。",
+          "⌘-drag a menu bar block to reorder it; its position is saved with the block.")
+    }
 
     // MARK: 通用设置
     var groupText: String   { t("文字", "Text") }

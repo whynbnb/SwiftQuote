@@ -8,13 +8,71 @@ struct ColorEntry: Identifiable, Codable, Equatable {
     var hex: String
 }
 
+/// 菜单栏块的持久化快照。运行时状态（菜单栏深浅等）不写在这里。
+struct BlockSnapshot: Codable, Equatable {
+    var id: UUID
+    var autosaveName: String
+    var text: String
+    var prefix: String
+    var suffix: String
+    var trackHistory: Bool
+    var maxWidth: Double
+    var fontSize: Double
+    var bold: Bool
+    var fontFamily: String?
+    var colorEntries: [ColorEntry]
+    var adaptiveColors: Bool
+    var lightBarColorEntries: [ColorEntry]
+    var darkBarColorEntries: [ColorEntry]
+    var history: [String]
+    var rotationEnabled: Bool
+    var rotationPaused: Bool
+    var rotationInterval: RotationInterval
+    var rotationOrder: RotationOrder
+    var rotationItems: [RotationItem]
+
+    /// 新增块的默认值：只显示文字本身，样式与主块保持一致的基础值。
+    static func makeDefault(autosaveName: String, text: String) -> BlockSnapshot {
+        BlockSnapshot(
+            id: UUID(),
+            autosaveName: autosaveName,
+            text: text,
+            prefix: "",
+            suffix: "",
+            trackHistory: true,
+            maxWidth: 200,
+            fontSize: 13,
+            bold: true,
+            fontFamily: nil,
+            colorEntries: [ColorEntry(hex: "#FFFFFF")],
+            adaptiveColors: false,
+            lightBarColorEntries: [ColorEntry(hex: "#000000")],
+            darkBarColorEntries: [ColorEntry(hex: "#FFFFFF")],
+            history: [],
+            rotationEnabled: false,
+            rotationPaused: false,
+            rotationInterval: .oneMinute,
+            rotationOrder: .sequential,
+            rotationItems: [])
+    }
+}
+
+/// 单个菜单栏块：文字、样式、颜色、轮播与历史都相互独立。
 @MainActor
-final class AppSettings: ObservableObject {
-    static let shared = AppSettings()
+final class BlockSettings: ObservableObject, Identifiable {
+    enum Change {
+        case display    // 需要刷新菜单栏标题
+        case rotation   // 需要重排轮播定时器
+        case persist    // 只需落盘（例如历史列表变化）
+    }
+
+    let id: UUID
+    let autosaveName: String
+
+    var onChange: ((Change) -> Void)?
 
     @Published var text: String {
         didSet {
-            UserDefaults.standard.set(text, forKey: "text")
             // 当前值永远不留在历史里。实时编辑（suppressHistory）也要执行这一步，
             // 只是不把被替换掉的旧值新增进历史。
             history.removeAll { $0 == text }
@@ -26,122 +84,118 @@ final class AppSettings: ObservableObject {
                     if history.count > 10 { history = Array(history.prefix(10)) }
                 }
             }
-            onDisplayChange?()
+            onChange?(.display)
         }
     }
-    @Published var prefix: String {
-        didSet { UserDefaults.standard.set(prefix, forKey: "prefix"); onDisplayChange?() }
-    }
-    @Published var suffix: String {
-        didSet { UserDefaults.standard.set(suffix, forKey: "suffix"); onDisplayChange?() }
-    }
-    @Published var trackHistory: Bool {
-        didSet { UserDefaults.standard.set(trackHistory, forKey: "trackHistory") }
-    }
-    @Published var maxWidth: Double {
-        didSet { UserDefaults.standard.set(maxWidth, forKey: "maxWidth"); onDisplayChange?() }
-    }
-    @Published var fontSize: Double {
-        didSet { UserDefaults.standard.set(fontSize, forKey: "fontSize"); onDisplayChange?() }
-    }
-    @Published var bold: Bool {
-        didSet { UserDefaults.standard.set(bold, forKey: "bold"); onDisplayChange?() }
-    }
+    @Published var prefix: String { didSet { onChange?(.display) } }
+    @Published var suffix: String { didSet { onChange?(.display) } }
+    @Published var trackHistory: Bool { didSet { onChange?(.persist) } }
+    @Published var maxWidth: Double { didSet { onChange?(.display) } }
+    @Published var fontSize: Double { didSet { onChange?(.display) } }
+    @Published var bold: Bool { didSet { onChange?(.display) } }
     /// 自定义字体族；nil = 系统默认
-    @Published var fontFamily: String? {
-        didSet {
-            if let fontFamily {
-                UserDefaults.standard.set(fontFamily, forKey: "fontFamily")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "fontFamily")
-            }
-            onDisplayChange?()
-        }
-    }
+    @Published var fontFamily: String? { didSet { onChange?(.display) } }
     /// 每个字符一个颜色，不足时循环使用
-    @Published var colorEntries: [ColorEntry] {
-        didSet {
-            if let data = try? JSONEncoder().encode(colorEntries) {
-                UserDefaults.standard.set(data, forKey: "colorEntries")
-            }
-            onDisplayChange?()
-        }
-    }
+    @Published var colorEntries: [ColorEntry] { didSet { onChange?(.display) } }
     /// 自适应菜单栏：开启后按菜单栏深浅自动切换两套颜色
-    @Published var adaptiveColors: Bool {
-        didSet { UserDefaults.standard.set(adaptiveColors, forKey: "adaptiveColors"); onDisplayChange?() }
-    }
+    @Published var adaptiveColors: Bool { didSet { onChange?(.display) } }
     /// 浅色菜单栏（深色壁纸）下使用的颜色
-    @Published var lightBarColorEntries: [ColorEntry] {
-        didSet {
-            if let data = try? JSONEncoder().encode(lightBarColorEntries) {
-                UserDefaults.standard.set(data, forKey: "lightBarColorEntries")
-            }
-            onDisplayChange?()
-        }
-    }
+    @Published var lightBarColorEntries: [ColorEntry] { didSet { onChange?(.display) } }
     /// 深色菜单栏（浅色壁纸）下使用的颜色
-    @Published var darkBarColorEntries: [ColorEntry] {
-        didSet {
-            if let data = try? JSONEncoder().encode(darkBarColorEntries) {
-                UserDefaults.standard.set(data, forKey: "darkBarColorEntries")
-            }
-            onDisplayChange?()
-        }
-    }
-    @Published var history: [String] {
-        didSet { UserDefaults.standard.set(history, forKey: "history") }
-    }
-    @Published var appearance: AppAppearance {
-        didSet {
-            UserDefaults.standard.set(appearance.rawValue, forKey: "appearance")
-            onAppearanceChange?()
-        }
-    }
-    @Published var language: AppLanguage {
-        didSet { UserDefaults.standard.set(language.rawValue, forKey: "appLanguage") }
-    }
+    @Published var darkBarColorEntries: [ColorEntry] { didSet { onChange?(.display) } }
+    @Published var history: [String] { didSet { onChange?(.persist) } }
 
     // MARK: - 轮播
 
     @Published var rotationEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(rotationEnabled, forKey: "rotationEnabled")
             if rotationPaused {
                 rotationPaused = false   // 切换启用状态时清除暂停
             }
-            onRotationSettingsChange?()
+            onChange?(.rotation)
         }
     }
-    @Published var rotationPaused: Bool {
-        didSet {
-            UserDefaults.standard.set(rotationPaused, forKey: "rotationPaused")
-            onRotationSettingsChange?()
-        }
-    }
-    @Published var rotationInterval: RotationInterval {
-        didSet {
-            UserDefaults.standard.set(rotationInterval.rawValue, forKey: "rotationInterval")
-            onRotationSettingsChange?()
-        }
-    }
-    @Published var rotationOrder: RotationOrder {
-        didSet {
-            UserDefaults.standard.set(rotationOrder.rawValue, forKey: "rotationOrder")
-            onRotationSettingsChange?()
-        }
-    }
-    @Published var rotationItems: [RotationItem] {
-        didSet {
-            if let data = try? JSONEncoder().encode(rotationItems) {
-                UserDefaults.standard.set(data, forKey: "rotationItems")
-            }
-            onRotationSettingsChange?()
-        }
-    }
+    @Published var rotationPaused: Bool { didSet { onChange?(.rotation) } }
+    @Published var rotationInterval: RotationInterval { didSet { onChange?(.rotation) } }
+    @Published var rotationOrder: RotationOrder { didSet { onChange?(.rotation) } }
+    @Published var rotationItems: [RotationItem] { didSet { onChange?(.rotation) } }
+
+    /// 当前块所在的菜单栏是否为深色（每个状态项可能在不同显示器上）。
+    /// 仅影响自适应配色与标题刷新，不落盘。
+    @Published var menuBarIsDark = false
 
     /// 设置页输入框实时编辑时置位：更新当前文字但不写历史，避免逐字污染历史。
     private var suppressHistory = false
+
+    /// 设置页「内容」输入框开始编辑时记录基线。
+    private var textEditBaseline: String?
+
+    /// 设置页正文输入框是否正在编辑：轮播定时器据此跳过，避免打断输入。
+    private(set) var isEditingText = false
+
+    init(snapshot: BlockSnapshot) {
+        id = snapshot.id
+        autosaveName = snapshot.autosaveName
+        text = snapshot.text
+        prefix = snapshot.prefix
+        suffix = snapshot.suffix
+        trackHistory = snapshot.trackHistory
+        maxWidth = snapshot.maxWidth
+        // 菜单栏高度约 24pt，字号上限压到 21，避免上下被裁切；同时兜底旧数据中的越界值。
+        fontSize = min(max(snapshot.fontSize, 9), 21)
+        bold = snapshot.bold
+        // 字体族：只接受当前系统仍可用的字体，否则回退系统默认
+        fontFamily = snapshot.fontFamily.flatMap {
+            AppSettings.availableFontFamilies.contains($0) ? $0 : nil
+        }
+        colorEntries = snapshot.colorEntries.isEmpty
+            ? [ColorEntry(hex: "#FFFFFF")]
+            : snapshot.colorEntries
+        adaptiveColors = snapshot.adaptiveColors
+        lightBarColorEntries = snapshot.lightBarColorEntries.isEmpty
+            ? [ColorEntry(hex: "#000000")]
+            : snapshot.lightBarColorEntries
+        darkBarColorEntries = snapshot.darkBarColorEntries.isEmpty
+            ? [ColorEntry(hex: "#FFFFFF")]
+            : snapshot.darkBarColorEntries
+        // 历史：过滤当前值/空值，去重并截断到 10 条
+        var cleanedHistory: [String] = []
+        for item in snapshot.history where item != snapshot.text && !item.isEmpty {
+            if !cleanedHistory.contains(item) { cleanedHistory.append(item) }
+        }
+        history = Array(cleanedHistory.prefix(10))
+        rotationEnabled = snapshot.rotationEnabled
+        rotationPaused = snapshot.rotationPaused
+        rotationInterval = snapshot.rotationInterval
+        rotationOrder = snapshot.rotationOrder
+        rotationItems = snapshot.rotationItems
+    }
+
+    var snapshot: BlockSnapshot {
+        BlockSnapshot(
+            id: id,
+            autosaveName: autosaveName,
+            text: text,
+            prefix: prefix,
+            suffix: suffix,
+            trackHistory: trackHistory,
+            maxWidth: maxWidth,
+            fontSize: fontSize,
+            bold: bold,
+            fontFamily: fontFamily,
+            colorEntries: colorEntries,
+            adaptiveColors: adaptiveColors,
+            lightBarColorEntries: lightBarColorEntries,
+            darkBarColorEntries: darkBarColorEntries,
+            history: history,
+            rotationEnabled: rotationEnabled,
+            rotationPaused: rotationPaused,
+            rotationInterval: rotationInterval,
+            rotationOrder: rotationOrder,
+            rotationItems: rotationItems)
+    }
+
+    // MARK: - 编辑 / 历史
 
     /// 实时编辑当前文字（不记入历史）。用于设置页输入框逐字输入。
     func setTextLive(_ value: String) {
@@ -149,12 +203,6 @@ final class AppSettings: ObservableObject {
         text = value
         suppressHistory = false
     }
-
-    /// 设置页「内容」输入框开始编辑时记录基线。
-    private var textEditBaseline: String?
-
-    /// 设置页正文输入框是否正在编辑：轮播定时器据此跳过，避免打断输入。
-    private(set) var isEditingText = false
 
     func beginTextEditing() {
         isEditingText = true
@@ -177,6 +225,13 @@ final class AppSettings: ObservableObject {
     /// 用于展示的历史列表：始终排除当前值。
     var displayHistory: [String] { history.filter { $0 != text } }
 
+    /// 删除某一条历史。
+    func removeHistory(_ value: String) {
+        history.removeAll { $0 == value }
+    }
+
+    // MARK: - 轮播
+
     /// 轮播实际参与切换的条目：过滤空白项，并按文字去重。
     var activeRotationItems: [RotationItem] {
         var seen = Set<String>()
@@ -194,64 +249,267 @@ final class AppSettings: ObservableObject {
         rotationItems.append(RotationItem(text: text))
     }
 
-    /// 删除某一条历史。
-    func removeHistory(_ value: String) {
-        history.removeAll { $0 == value }
+    // MARK: - 显示
+
+    var displayText: String { prefix + text + suffix }
+
+    /// 用于设置页块列表/菜单标题的简短标签。
+    func label(_ isChinese: Bool) -> String {
+        let value = displayText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? (isChinese ? "空块" : "Empty Block") : value
+    }
+
+    /// 按当前字体族/粗体/字号解析实际字体；字体不可用时回退系统字体。
+    func resolvedFont(size: CGFloat) -> NSFont {
+        if let fontFamily {
+            let traits: NSFontTraitMask = bold ? [.boldFontMask] : []
+            if let custom = NSFontManager.shared.font(withFamily: fontFamily,
+                                                      traits: traits,
+                                                      weight: 5,
+                                                      size: size) {
+                return custom
+            }
+            // 字体族没有独立粗体时，退回同族常规字重并尝试合成粗体
+            if bold,
+               let regular = NSFontManager.shared.font(withFamily: fontFamily,
+                                                       traits: [],
+                                                       weight: 5,
+                                                       size: size) {
+                return NSFontManager.shared.convert(regular, toHaveTrait: .boldFontMask)
+            }
+        }
+        return bold ? .boldSystemFont(ofSize: size) : .systemFont(ofSize: size)
+    }
+
+    var font: NSFont { resolvedFont(size: fontSize) }
+
+    /// 当前实际生效的颜色（自适应开启时按菜单栏深浅选一套）
+    var effectiveColorEntries: [ColorEntry] {
+        guard adaptiveColors else { return colorEntries }
+        return menuBarIsDark ? darkBarColorEntries : lightBarColorEntries
+    }
+
+    var effectiveNSColors: [NSColor] {
+        effectiveColorEntries.compactMap { NSColor(hex: $0.hex) }
+    }
+
+    /// 恢复默认颜色（当前模式下正在编辑的那套/两套）
+    func resetColorsToDefault() {
+        if adaptiveColors {
+            lightBarColorEntries = [ColorEntry(hex: "#000000")]
+            darkBarColorEntries = [ColorEntry(hex: "#FFFFFF")]
+        } else {
+            colorEntries = [ColorEntry(hex: "#FFFFFF")]
+        }
+    }
+}
+
+/// 全局设置 + 所有菜单栏块。每个块在菜单栏有独立的 NSStatusItem。
+@MainActor
+final class AppSettings: ObservableObject {
+    static let shared = AppSettings()
+
+    /// 所有菜单栏块（至少一个）。结构变化通过 onStructureChange 通知状态栏同步。
+    @Published private(set) var blocks: [BlockSettings]
+
+    /// 设置页当前编辑的块。
+    @Published var selectedBlockID: UUID {
+        didSet {
+            UserDefaults.standard.set(selectedBlockID.uuidString, forKey: "selectedBlockID")
+            // 切换块时结束所有可能仍在编辑的输入框，补记基线历史；
+            // 否则旧块会一直停留在 isEditingText，轮播被永久跳过。
+            for block in blocks { block.endTextEditing() }
+        }
+    }
+
+    @Published var appearance: AppAppearance {
+        didSet {
+            UserDefaults.standard.set(appearance.rawValue, forKey: "appearance")
+            onAppearanceChange?()
+        }
+    }
+    @Published var language: AppLanguage {
+        didSet { UserDefaults.standard.set(language.rawValue, forKey: "appLanguage") }
+    }
+
+    var selectedBlock: BlockSettings? {
+        blocks.first { $0.id == selectedBlockID } ?? blocks.first
     }
 
     private init() {
         let d = UserDefaults.standard
+        let loaded = Self.loadBlocks(d)
+        let initialBlocks = loaded.map { BlockSettings(snapshot: $0) }
+        blocks = initialBlocks
+
+        appearance = AppAppearance(rawValue: d.string(forKey: "appearance") ?? "") ?? .system
+        language = AppLanguage(rawValue: d.string(forKey: "appLanguage") ?? "") ?? .system
+
+        let savedSelection = d.string(forKey: "selectedBlockID").flatMap(UUID.init(uuidString:))
+        selectedBlockID = initialBlocks.first { $0.id == savedSelection }?.id ?? initialBlocks[0].id
+
+        for block in initialBlocks {
+            block.onChange = { [weak self, weak block] change in
+                guard let self, let block else { return }
+                self.blockChanged(block, change)
+            }
+        }
+
+        // 首次从旧版本迁移时立即落盘，避免每次启动重新生成块 ID。
+        persistBlocks()
+    }
+
+    private func blockChanged(_ block: BlockSettings, _ change: BlockSettings.Change) {
+        persistBlocks()
+        switch change {
+        case .display:
+            onDisplayChange?(block)
+        case .rotation:
+            onRotationChange?(block)
+        case .persist:
+            break
+        }
+    }
+
+    // MARK: - 块管理
+
+    @discardableResult
+    func addBlock() -> BlockSettings {
+        let snapshot = BlockSnapshot.makeDefault(
+            autosaveName: "SwiftQuoteStatusItem-\(UUID().uuidString)",
+            text: strings.newBlockText)
+        let block = BlockSettings(snapshot: snapshot)
+        block.onChange = { [weak self, weak block] change in
+            guard let self, let block else { return }
+            self.blockChanged(block, change)
+        }
+        let index = blocks.firstIndex { $0.id == selectedBlockID }.map { $0 + 1 } ?? blocks.count
+        blocks.insert(block, at: min(index, blocks.count))
+        selectedBlockID = block.id
+        persistBlocks()
+        onStructureChange?()
+        return block
+    }
+
+    func removeBlock(_ block: BlockSettings) {
+        guard blocks.count > 1,
+              let index = blocks.firstIndex(where: { $0.id == block.id }) else { return }
+        blocks.remove(at: index)
+        if selectedBlockID == block.id {
+            selectedBlockID = blocks[min(index, blocks.count - 1)].id
+        }
+        persistBlocks()
+        onStructureChange?()
+    }
+
+    private static func loadBlocks(_ d: UserDefaults) -> [BlockSnapshot] {
+        if let data = d.data(forKey: "blocks"),
+           let decoded = try? JSONDecoder().decode([BlockSnapshot].self, from: data),
+           !decoded.isEmpty {
+            // 兜底损坏/重复数据：ID 与 autosaveName 都必须唯一
+            var seenIDs = Set<UUID>()
+            var seenNames = Set<String>()
+            return decoded.map { snapshot in
+                var snapshot = snapshot
+                if seenIDs.contains(snapshot.id) { snapshot.id = UUID() }
+                seenIDs.insert(snapshot.id)
+                if snapshot.autosaveName.isEmpty || seenNames.contains(snapshot.autosaveName) {
+                    snapshot.autosaveName = "SwiftQuoteStatusItem-\(UUID().uuidString)"
+                }
+                seenNames.insert(snapshot.autosaveName)
+                return snapshot
+            }
+        }
+        return [legacySnapshot(d)]
+    }
+
+    /// 从旧版本的单块键迁移出第一个块。
+    private static func legacySnapshot(_ d: UserDefaults) -> BlockSnapshot {
         let currentText = d.string(forKey: "text") ?? "Aloha!"
-        text = currentText
-        prefix = d.string(forKey: "prefix") ?? "["
-        suffix = d.string(forKey: "suffix") ?? "]"
-        trackHistory = d.object(forKey: "trackHistory") as? Bool ?? true
-        maxWidth = d.object(forKey: "maxWidth") as? Double ?? 200
-        // 菜单栏高度约 24pt，字号上限压到 21，避免上下被裁切；同时兜底旧数据中的越界值。
-        fontSize = min(max(d.object(forKey: "fontSize") as? Double ?? 13, 9), 21)
-        bold = d.object(forKey: "bold") as? Bool ?? true
-        // 字体族：只接受当前系统仍可用的字体，否则回退系统默认
         let storedFamily = d.string(forKey: "fontFamily")
-        fontFamily = storedFamily.flatMap { Self.availableFontFamilies.contains($0) ? $0 : nil }
+        let family = storedFamily.flatMap { availableFontFamilies.contains($0) ? $0 : nil }
+
+        let colors: [ColorEntry]
         if let data = d.data(forKey: "colorEntries"),
            let decoded = try? JSONDecoder().decode([ColorEntry].self, from: data),
            !decoded.isEmpty {
-            colorEntries = decoded
+            colors = decoded
         } else {
-            // 兼容旧版本存的 [String]
+            // 兼容更早版本存的 [String]
             let legacy = d.stringArray(forKey: "colors") ?? ["#FFFFFF"]
-            colorEntries = legacy.map { ColorEntry(hex: $0) }
+            colors = legacy.map { ColorEntry(hex: $0) }
         }
-        // 历史：过滤当前值/空值，去重并截断到 10 条，避免旧数据产生重复 ID 或超长列表
-        var cleanedHistory: [String] = []
-        for item in d.stringArray(forKey: "history") ?? []
-        where item != currentText && !item.isEmpty {
-            if !cleanedHistory.contains(item) { cleanedHistory.append(item) }
-        }
-        history = Array(cleanedHistory.prefix(10))
-        adaptiveColors = d.object(forKey: "adaptiveColors") as? Bool ?? false
+
         func loadEntries(_ key: String, fallback: [ColorEntry]) -> [ColorEntry] {
             guard let data = d.data(forKey: key),
                   let decoded = try? JSONDecoder().decode([ColorEntry].self, from: data),
                   !decoded.isEmpty else { return fallback }
             return decoded
         }
-        lightBarColorEntries = loadEntries("lightBarColorEntries", fallback: [ColorEntry(hex: "#000000")])
-        darkBarColorEntries = loadEntries("darkBarColorEntries", fallback: [ColorEntry(hex: "#FFFFFF")])
-        appearance = AppAppearance(rawValue: d.string(forKey: "appearance") ?? "") ?? .system
-        language = AppLanguage(rawValue: d.string(forKey: "appLanguage") ?? "") ?? .system
 
-        rotationEnabled = d.object(forKey: "rotationEnabled") as? Bool ?? false
-        rotationPaused = d.object(forKey: "rotationPaused") as? Bool ?? false
-        rotationInterval = RotationInterval(rawValue: d.string(forKey: "rotationInterval") ?? "") ?? .oneMinute
-        rotationOrder = RotationOrder(rawValue: d.string(forKey: "rotationOrder") ?? "") ?? .sequential
+        var cleanedHistory: [String] = []
+        for item in d.stringArray(forKey: "history") ?? []
+        where item != currentText && !item.isEmpty {
+            if !cleanedHistory.contains(item) { cleanedHistory.append(item) }
+        }
+
+        let rotationItems: [RotationItem]
         if let data = d.data(forKey: "rotationItems"),
            let decoded = try? JSONDecoder().decode([RotationItem].self, from: data) {
             rotationItems = decoded
         } else {
             rotationItems = []
         }
+
+        return BlockSnapshot(
+            id: UUID(),
+            autosaveName: "SwiftQuoteStatusItem",   // 保留旧版菜单栏位置
+            text: currentText,
+            prefix: d.string(forKey: "prefix") ?? "[",
+            suffix: d.string(forKey: "suffix") ?? "]",
+            trackHistory: d.object(forKey: "trackHistory") as? Bool ?? true,
+            maxWidth: d.object(forKey: "maxWidth") as? Double ?? 200,
+            fontSize: d.object(forKey: "fontSize") as? Double ?? 13,
+            bold: d.object(forKey: "bold") as? Bool ?? true,
+            fontFamily: family,
+            colorEntries: colors,
+            adaptiveColors: d.object(forKey: "adaptiveColors") as? Bool ?? false,
+            lightBarColorEntries: loadEntries("lightBarColorEntries",
+                                              fallback: [ColorEntry(hex: "#000000")]),
+            darkBarColorEntries: loadEntries("darkBarColorEntries",
+                                             fallback: [ColorEntry(hex: "#FFFFFF")]),
+            history: Array(cleanedHistory.prefix(10)),
+            rotationEnabled: d.object(forKey: "rotationEnabled") as? Bool ?? false,
+            rotationPaused: d.object(forKey: "rotationPaused") as? Bool ?? false,
+            rotationInterval: RotationInterval(rawValue: d.string(forKey: "rotationInterval") ?? "")
+                ?? .oneMinute,
+            rotationOrder: RotationOrder(rawValue: d.string(forKey: "rotationOrder") ?? "")
+                ?? .sequential,
+            rotationItems: rotationItems)
     }
+
+    private func persistBlocks() {
+        if let data = try? JSONEncoder().encode(blocks.map(\.snapshot)) {
+            UserDefaults.standard.set(data, forKey: "blocks")
+        }
+        UserDefaults.standard.set(selectedBlockID.uuidString, forKey: "selectedBlockID")
+    }
+
+    /// 补记所有块可能仍在编辑中的正文（endTextEditing 幂等）。
+    func endTextEditing() {
+        for block in blocks { block.endTextEditing() }
+    }
+
+    // MARK: - 回调（由状态栏 / 轮播控制器设置）
+
+    /// 某个块的显示内容变化
+    var onDisplayChange: ((BlockSettings) -> Void)?
+    /// 某个块的轮播配置变化
+    var onRotationChange: ((BlockSettings) -> Void)?
+    /// 块的增删
+    var onStructureChange: (() -> Void)?
+    /// 主题外观变化（用于更新已打开的窗口）
+    var onAppearanceChange: (() -> Void)?
 
     // MARK: - 开机自启（SMAppService；裸跑 SwiftPM 可执行文件时不可用）
 
@@ -320,12 +578,6 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    /// 主题外观变化时的回调（由 StatusBarController 设置，用于更新已打开的窗口）
-    var onAppearanceChange: (() -> Void)?
-
-    /// 轮播配置变化时的回调（由 RotationController 设置）
-    var onRotationSettingsChange: (() -> Void)?
-
     var isChinese: Bool {
         switch language {
         case .chinese: return true
@@ -338,68 +590,10 @@ final class AppSettings: ObservableObject {
     /// 当前语言下的文案
     var strings: L { L(isChinese: isChinese) }
 
-    var displayText: String { prefix + text + suffix }
-
     /// 所有可选字体族（去掉隐藏字体/“System Font”；系统默认单独作为 nil 选项）
     static let availableFontFamilies: [String] = NSFontManager.shared.availableFontFamilies
         .filter { !$0.hasPrefix(".") && $0 != "System Font" }
         .sorted()
-
-    /// 按当前字体族/粗体/字号解析实际字体；字体不可用时回退系统字体。
-    func resolvedFont(size: CGFloat) -> NSFont {
-        if let fontFamily {
-            let traits: NSFontTraitMask = bold ? [.boldFontMask] : []
-            if let custom = NSFontManager.shared.font(withFamily: fontFamily,
-                                                      traits: traits,
-                                                      weight: 5,
-                                                      size: size) {
-                return custom
-            }
-            // 字体族没有独立粗体时，退回同族常规字重并尝试合成粗体
-            if bold,
-               let regular = NSFontManager.shared.font(withFamily: fontFamily,
-                                                       traits: [],
-                                                       weight: 5,
-                                                       size: size) {
-                return NSFontManager.shared.convert(regular, toHaveTrait: .boldFontMask)
-            }
-        }
-        return bold ? .boldSystemFont(ofSize: size) : .systemFont(ofSize: size)
-    }
-
-    var font: NSFont { resolvedFont(size: fontSize) }
-
-    var nsColors: [NSColor] {
-        colorEntries.compactMap { NSColor(hex: $0.hex) }
-    }
-
-    /// 菜单栏当前是否为深色（浅色壁纸下系统会把菜单栏压暗）。
-    /// 用 @Published 让设置页的颜色预览能随菜单栏深浅变化实时刷新；
-    /// 赋值处需先判等，避免每次刷新标题都触发无意义的 SwiftUI 重绘。
-    @Published var menuBarIsDark = false
-
-    /// 显示内容变化时的回调（由 StatusBarController 设置）
-    var onDisplayChange: (() -> Void)?
-
-    /// 当前实际生效的颜色（自适应开启时按菜单栏深浅选一套）
-    var effectiveColorEntries: [ColorEntry] {
-        guard adaptiveColors else { return colorEntries }
-        return menuBarIsDark ? darkBarColorEntries : lightBarColorEntries
-    }
-
-    var effectiveNSColors: [NSColor] {
-        effectiveColorEntries.compactMap { NSColor(hex: $0.hex) }
-    }
-
-    /// 恢复默认颜色（当前模式下正在编辑的那套/两套）
-    func resetColorsToDefault() {
-        if adaptiveColors {
-            lightBarColorEntries = [ColorEntry(hex: "#000000")]
-            darkBarColorEntries = [ColorEntry(hex: "#FFFFFF")]
-        } else {
-            colorEntries = [ColorEntry(hex: "#FFFFFF")]
-        }
-    }
 }
 
 struct Preset: Identifiable {
@@ -455,7 +649,7 @@ struct Preset: Identifiable {
 
 // MARK: - 轮播模型
 
-enum RotationInterval: String, CaseIterable, Identifiable {
+enum RotationInterval: String, CaseIterable, Identifiable, Codable {
     case thirtySeconds, oneMinute, fiveMinutes, oneHour
 
     var id: String { rawValue }
@@ -479,7 +673,7 @@ enum RotationInterval: String, CaseIterable, Identifiable {
     }
 }
 
-enum RotationOrder: String, CaseIterable, Identifiable {
+enum RotationOrder: String, CaseIterable, Identifiable, Codable {
     case sequential, random
 
     var id: String { rawValue }

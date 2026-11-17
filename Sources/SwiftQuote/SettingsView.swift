@@ -68,29 +68,138 @@ struct GeneralSettingsView: View {
     }
 }
 
-/// 文字页：前缀/后缀/样式/预设/历史开关
-struct TextSettingsView: View {
+/// 菜单栏块页：添加 / 删除 / 选择当前编辑的块。
+struct BlocksSettingsView: View {
     @EnvironmentObject var settings: AppSettings
 
     var body: some View {
         let s = settings.strings
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(s.blocksHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(s.addBlock) {
+                    settings.addBlock()
+                }
+            }
+
+            List(selection: Binding(
+                get: { Optional(settings.selectedBlockID) },
+                set: { newValue in
+                    if let newValue { settings.selectedBlockID = newValue }
+                })) {
+                ForEach(settings.blocks) { block in
+                    BlockRow(block: block)
+                        .tag(block.id)
+                }
+            }
+            .listStyle(.inset)
+
+            Text(s.blocksPositionHint)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+}
+
+/// 观察单个块，保证块列表里的文字随编辑/轮播实时更新。
+private struct BlockRow: View {
+    @EnvironmentObject var settings: AppSettings
+    @ObservedObject var block: BlockSettings
+
+    var body: some View {
+        let s = settings.strings
+        HStack(spacing: 8) {
+            Image(systemName: "menubar.rectangle")
+                .foregroundStyle(.secondary)
+            Text(block.label(settings.isChinese))
+                .lineLimit(1)
+            Spacer()
+            Button {
+                settings.removeBlock(block)
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+            .disabled(settings.blocks.count <= 1)
+            .help(s.deleteBlock)
+        }
+    }
+}
+
+/// 观察单个块，保证块选择器里的名称随编辑/轮播实时更新。
+private struct BlockLabel: View {
+    @ObservedObject var block: BlockSettings
+    let isChinese: Bool
+
+    var body: some View {
+        Text(block.label(isChinese))
+    }
+}
+
+/// 每块页面顶部的块选择器。
+private struct BlockPickerRow: View {
+    @EnvironmentObject var settings: AppSettings
+
+    var body: some View {
+        let s = settings.strings
+        HStack {
+            Text(s.block)
+                .frame(width: 60, alignment: .trailing)
+            Picker("", selection: $settings.selectedBlockID) {
+                ForEach(settings.blocks) { block in
+                    BlockLabel(block: block, isChinese: settings.isChinese)
+                        .tag(block.id)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// 文字页：内容/前后缀/样式/预设/历史开关（作用于当前块）
+struct TextSettingsView: View {
+    @EnvironmentObject var settings: AppSettings
+
+    var body: some View {
+        if let block = settings.selectedBlock {
+            BlockTextSettingsView(block: block)
+                .id(block.id)
+        }
+    }
+}
+
+private struct BlockTextSettingsView: View {
+    @EnvironmentObject var settings: AppSettings
+    @ObservedObject var block: BlockSettings
+
+    var body: some View {
+        let s = settings.strings
         let isChinese = settings.isChinese
-        return ScrollView {
+        ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                BlockPickerRow()
+
                 GroupBox(s.groupText) {
                     VStack(alignment: .leading, spacing: 8) {
                         // 实时编辑：更新菜单栏但不逐字写历史（切换时才把旧值记入历史）
                         labeledField(s.content, text: Binding(
-                            get: { settings.text },
-                            set: { settings.setTextLive($0) }),
-                            onBeginEditing: { settings.beginTextEditing() },
-                            onEndEditing: { settings.endTextEditing() })
-                        labeledField(s.prefix, text: $settings.prefix)
-                        labeledField(s.suffix, text: $settings.suffix)
+                            get: { block.text },
+                            set: { block.setTextLive($0) }),
+                            onBeginEditing: { block.beginTextEditing() },
+                            onEndEditing: { block.endTextEditing() })
+                        labeledField(s.prefix, text: $block.prefix)
+                        labeledField(s.suffix, text: $block.suffix)
                         HStack {
                             Text(s.fontFamily)
                                 .frame(width: 60, alignment: .trailing)
-                            Picker("", selection: $settings.fontFamily) {
+                            Picker("", selection: $block.fontFamily) {
                                 Text(s.systemDefault).tag(String?.none)
                                 ForEach(AppSettings.availableFontFamilies, id: \.self) { family in
                                     Text(family).tag(Optional(family))
@@ -100,18 +209,18 @@ struct TextSettingsView: View {
                             .pickerStyle(.menu)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        Toggle(s.bold, isOn: $settings.bold)
+                        Toggle(s.bold, isOn: $block.bold)
                         HStack {
                             Text(s.fontSize)
-                            Slider(value: $settings.fontSize, in: 9...21, step: 0.5)
-                            Text("\(settings.fontSize, specifier: "%.1f")")
+                            Slider(value: $block.fontSize, in: 9...21, step: 0.5)
+                            Text("\(block.fontSize, specifier: "%.1f")")
                                 .monospacedDigit()
                                 .frame(width: 34, alignment: .trailing)
                         }
                         HStack {
                             Text(s.maxWidth)
-                            Slider(value: $settings.maxWidth, in: 40...400, step: 5)
-                            Text("\(Int(settings.maxWidth))")
+                            Slider(value: $block.maxWidth, in: 40...400, step: 5)
+                            Text("\(Int(block.maxWidth))")
                                 .monospacedDigit()
                                 .frame(width: 34, alignment: .trailing)
                         }
@@ -126,14 +235,14 @@ struct TextSettingsView: View {
                                 Text(preset.name(isChinese))
                                 Spacer()
                                 Text(preset.prefix + preset.text(isChinese) + preset.suffix)
-                                    .font(settings.swiftUIFont(size: 13))
+                                    .font(block.swiftUIFont(size: 13))
                                     .foregroundStyle(.secondary)
                                 Button(s.apply) {
-                                    settings.prefix = preset.prefix
-                                    settings.suffix = preset.suffix
+                                    block.prefix = preset.prefix
+                                    block.suffix = preset.suffix
                                     let value = preset.text(isChinese)
                                     if !value.isEmpty {
-                                        settings.text = value
+                                        block.text = value
                                     }
                                 }
                                 .controlSize(.small)
@@ -145,7 +254,7 @@ struct TextSettingsView: View {
 
                 GroupBox(s.tabHistory) {
                     HStack {
-                        Toggle(s.trackHistory, isOn: $settings.trackHistory)
+                        Toggle(s.trackHistory, isOn: $block.trackHistory)
                     }
                     .padding(8)
                 }
@@ -160,37 +269,54 @@ struct TextSettingsView: View {
         HStack {
             Text(label)
                 .frame(width: 60, alignment: .trailing)
-            NoAutofillTextFieldView(placeholder: label, text: text,
-                                    onBeginEditing: onBeginEditing,
-                                    onEndEditing: onEndEditing)
+            NoAutofillTextFieldView(
+                placeholder: label,
+                text: text,
+                font: block.resolvedFont(size: NSFont.systemFontSize),
+                onBeginEditing: onBeginEditing,
+                onEndEditing: onEndEditing)
                 .frame(maxWidth: .infinity)
         }
     }
 }
 
-/// 颜色页：依次循环应用到每个字符，可单独修改、拖动排序、删除
+/// 颜色页：依次循环应用到每个字符，可单独修改、拖动排序、删除（作用于当前块）
 /// 开启「自适应菜单栏」后维护两套颜色，随菜单栏深浅自动切换
 struct ColorsSettingsView: View {
     @EnvironmentObject var settings: AppSettings
 
     var body: some View {
+        if let block = settings.selectedBlock {
+            BlockColorsSettingsView(block: block)
+                .id(block.id)
+        }
+    }
+}
+
+private struct BlockColorsSettingsView: View {
+    @EnvironmentObject var settings: AppSettings
+    @ObservedObject var block: BlockSettings
+
+    var body: some View {
         let s = settings.strings
         VStack(alignment: .leading, spacing: 12) {
+            BlockPickerRow()
+
             HStack {
-                Toggle(s.adaptiveColors, isOn: $settings.adaptiveColors)
+                Toggle(s.adaptiveColors, isOn: $block.adaptiveColors)
                 Spacer()
                 Button(s.resetColors) {
-                    settings.resetColorsToDefault()
+                    block.resetColorsToDefault()
                 }
             }
 
-            if settings.adaptiveColors {
+            if block.adaptiveColors {
                 colorList(title: s.lightBarColors,
-                          entries: $settings.lightBarColorEntries)
+                          entries: $block.lightBarColorEntries)
                 colorList(title: s.darkBarColors,
-                          entries: $settings.darkBarColorEntries)
+                          entries: $block.darkBarColorEntries)
             } else {
-                colorList(title: nil, entries: $settings.colorEntries)
+                colorList(title: nil, entries: $block.colorEntries)
             }
 
             Text(s.colorsHint)
@@ -215,11 +341,11 @@ struct ColorsSettingsView: View {
 
     private var preview: some View {
         HStack(spacing: 0) {
-            let colors = settings.effectiveNSColors
-            let full = settings.displayText
+            let colors = block.effectiveNSColors
+            let full = block.displayText
             ForEach(Array(full.enumerated()), id: \.offset) { i, ch in
                 Text(String(ch))
-                    .font(settings.swiftUIFont(size: settings.fontSize))
+                    .font(block.swiftUIFont(size: block.fontSize))
                     .foregroundStyle(colors.isEmpty ? Color.white : Color(nsColor: colors[i % colors.count]))
             }
         }
@@ -281,19 +407,33 @@ private struct ColorListEditor: View {
     }
 }
 
-/// 轮播页：一组文字按间隔顺序/随机切换
+/// 轮播页：当前块的一组文字按间隔顺序/随机切换
 struct RotationSettingsView: View {
     @EnvironmentObject var settings: AppSettings
 
     var body: some View {
+        if let block = settings.selectedBlock {
+            BlockRotationSettingsView(block: block)
+                .id(block.id)
+        }
+    }
+}
+
+private struct BlockRotationSettingsView: View {
+    @EnvironmentObject var settings: AppSettings
+    @ObservedObject var block: BlockSettings
+
+    var body: some View {
         let s = settings.strings
         VStack(alignment: .leading, spacing: 12) {
-            Toggle(s.rotationEnabled, isOn: $settings.rotationEnabled)
+            BlockPickerRow()
+
+            Toggle(s.rotationEnabled, isOn: $block.rotationEnabled)
 
             HStack {
                 Text(s.rotationInterval)
                     .frame(width: 60, alignment: .trailing)
-                Picker("", selection: $settings.rotationInterval) {
+                Picker("", selection: $block.rotationInterval) {
                     ForEach(RotationInterval.allCases) { interval in
                         Text(interval.label(settings.isChinese)).tag(interval)
                     }
@@ -305,7 +445,7 @@ struct RotationSettingsView: View {
             HStack {
                 Text(s.rotationOrder)
                     .frame(width: 60, alignment: .trailing)
-                Picker("", selection: $settings.rotationOrder) {
+                Picker("", selection: $block.rotationOrder) {
                     Text(s.rotationSequential).tag(RotationOrder.sequential)
                     Text(s.rotationRandom).tag(RotationOrder.random)
                 }
@@ -315,30 +455,30 @@ struct RotationSettingsView: View {
 
             HStack(spacing: 8) {
                 Button(s.rotationAddCurrent) {
-                    settings.addCurrentTextToRotation()
+                    block.addCurrentTextToRotation()
                 }
-                .disabled(settings.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          || settings.rotationItems.contains { $0.text == settings.text })
+                .disabled(block.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          || block.rotationItems.contains { $0.text == block.text })
 
                 Button(s.rotationAddItem) {
-                    settings.rotationItems.append(RotationItem(text: ""))
+                    block.rotationItems.append(RotationItem(text: ""))
                 }
 
                 Spacer()
 
                 Button(s.menuNextItem) {
-                    RotationController.shared.nextManually()
+                    RotationController.shared.nextManually(block: block)
                 }
-                .disabled(!settings.rotationEnabled || settings.activeRotationItems.count < 2)
+                .disabled(!block.rotationEnabled || block.activeRotationItems.count < 2)
 
-                Button(settings.rotationPaused ? s.menuResumeRotation : s.menuPauseRotation) {
-                    RotationController.shared.togglePause()
+                Button(block.rotationPaused ? s.menuResumeRotation : s.menuPauseRotation) {
+                    RotationController.shared.togglePause(block: block)
                 }
-                .disabled(!settings.rotationEnabled)
+                .disabled(!block.rotationEnabled)
             }
             .controlSize(.small)
 
-            if settings.rotationItems.isEmpty {
+            if block.rotationItems.isEmpty {
                 Spacer()
                 HStack {
                     Spacer()
@@ -350,18 +490,18 @@ struct RotationSettingsView: View {
                 Spacer()
             } else {
                 List {
-                    ForEach($settings.rotationItems) { $item in
+                    ForEach($block.rotationItems) { $item in
                         HStack(spacing: 8) {
                             TextField(s.rotationItemPlaceholder, text: $item.text)
                                 .textFieldStyle(.roundedBorder)
-                                .font(settings.swiftUIFont(size: 13))
-                            if item.text == settings.text && !item.text.isEmpty {
+                                .font(block.swiftUIFont(size: 13))
+                            if item.text == block.text && !item.text.isEmpty {
                                 Text(s.current)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
                             Button {
-                                settings.rotationItems.removeAll { $0.id == item.id }
+                                block.rotationItems.removeAll { $0.id == item.id }
                             } label: {
                                 Image(systemName: "minus.circle.fill")
                                     .foregroundStyle(.red)
@@ -369,13 +509,13 @@ struct RotationSettingsView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .onMove { settings.rotationItems.move(fromOffsets: $0, toOffset: $1) }
-                    .onDelete { settings.rotationItems.remove(atOffsets: $0) }
+                    .onMove { block.rotationItems.move(fromOffsets: $0, toOffset: $1) }
+                    .onDelete { block.rotationItems.remove(atOffsets: $0) }
                 }
                 .listStyle(.inset)
             }
 
-            if !settings.rotationItems.isEmpty && settings.activeRotationItems.count < 2 {
+            if !block.rotationItems.isEmpty && block.activeRotationItems.count < 2 {
                 Text(s.rotationNeedsTwo)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -385,20 +525,34 @@ struct RotationSettingsView: View {
     }
 }
 
-/// 历史记录页：查看、应用、删除单条、清空
+/// 历史记录页：查看、应用、删除单条、清空（作用于当前块）
 struct HistorySettingsView: View {
     @EnvironmentObject var settings: AppSettings
 
     var body: some View {
+        if let block = settings.selectedBlock {
+            BlockHistorySettingsView(block: block)
+                .id(block.id)
+        }
+    }
+}
+
+private struct BlockHistorySettingsView: View {
+    @EnvironmentObject var settings: AppSettings
+    @ObservedObject var block: BlockSettings
+
+    var body: some View {
         let s = settings.strings
-        let items = settings.displayHistory   // 历史列表不含当前值
+        let items = block.displayHistory   // 历史列表不含当前值
         VStack(alignment: .leading, spacing: 12) {
+            BlockPickerRow()
+
             HStack {
-                Toggle(s.trackHistory, isOn: $settings.trackHistory)
+                Toggle(s.trackHistory, isOn: $block.trackHistory)
                 Spacer()
-                if !settings.history.isEmpty {
+                if !block.history.isEmpty {
                     Button(role: .destructive) {
-                        settings.history = []
+                        block.history = []
                     } label: {
                         Label(s.clearAll, systemImage: "trash")
                     }
@@ -406,10 +560,10 @@ struct HistorySettingsView: View {
             }
 
             // 当前值单独显示（不混在历史列表里）
-            if !settings.text.isEmpty {
+            if !block.text.isEmpty {
                 GroupBox(s.current) {
                     HStack {
-                        Text(settings.text)
+                        Text(block.text)
                             .lineLimit(1)
                         Spacer()
                     }
@@ -434,11 +588,11 @@ struct HistorySettingsView: View {
                                 .lineLimit(1)
                             Spacer()
                             Button(s.apply) {
-                                settings.text = item   // 切换：旧值进入历史，该值移出历史
+                                block.text = item   // 切换：旧值进入历史，该值移出历史
                             }
                             .controlSize(.small)
                             Button {
-                                settings.removeHistory(item)
+                                block.removeHistory(item)
                             } label: {
                                 Image(systemName: "trash")
                             }
@@ -448,7 +602,7 @@ struct HistorySettingsView: View {
                         }
                     }
                     .onDelete { offsets in
-                        for index in offsets { settings.removeHistory(items[index]) }
+                        for index in offsets { block.removeHistory(items[index]) }
                     }
                 }
                 .listStyle(.inset)
@@ -458,7 +612,7 @@ struct HistorySettingsView: View {
     }
 }
 
-private extension AppSettings {
+private extension BlockSettings {
     /// SwiftUI 侧的字体：系统默认走 .system，自定义字体族用其 PostScript 名。
     func swiftUIFont(size: CGFloat) -> Font {
         if fontFamily != nil {
