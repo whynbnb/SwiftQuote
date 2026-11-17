@@ -73,6 +73,7 @@ final class StatusBarController: NSObject, ObservableObject {
         button.action = #selector(onClick(_:))
         button.target = self
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        button.setAccessibilityRole(.button)
 
         // macOS 15 在多显示器 / 通用控制下会把「非活动显示器」的菜单栏整体压暗。
         // 只有带 image 的状态项才会走系统的 inactive-display 渲染；纯 attributedTitle
@@ -139,8 +140,10 @@ final class StatusBarController: NSObject, ObservableObject {
 
         // 内容为空时用提示文案兜底，方便用户悬停/读屏时知道这里可以点。
         let accessibleText = full.isEmpty ? "SwiftQuote" : full
-        button.toolTip = full.isEmpty ? settings.strings.statusItemToolTip : full
+        let help = accessibilityHelp(for: block)
+        button.toolTip = full.isEmpty ? help : full
         button.setAccessibilityLabel(accessibleText)
+        button.setAccessibilityHelp(help)
 
         // 避免重复写入相同的 attributedTitle：macOS 上反复赋值（尤其是相同值）
         // 会让状态项整个消失。内容/宽度没变就直接跳过。
@@ -156,6 +159,13 @@ final class StatusBarController: NSObject, ObservableObject {
 
     private func block(for button: NSStatusBarButton) -> BlockSettings? {
         settings.blocks.first { statusItems[$0.id]?.button === button }
+    }
+
+    /// VoiceOver 帮助文案随左键行为变化。
+    private func accessibilityHelp(for block: BlockSettings) -> String {
+        block.calendarOnLeftClick
+            ? settings.strings.statusItemCalendarToolTip
+            : settings.strings.statusItemToolTip
     }
 
     private func block(id: UUID?) -> BlockSettings? {

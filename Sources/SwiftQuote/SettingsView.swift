@@ -29,30 +29,45 @@ struct GeneralSettingsView: View {
                 .pickerStyle(.segmented)
             }
             Section(s.groupStartup) {
-                Toggle(s.launchAtLogin, isOn: Binding(
-                    get: { settings.launchAtLogin },
-                    set: { settings.launchAtLogin = $0 }))
-                    .disabled(!settings.loginItemAvailable)
+                HStack {
+                    Toggle(s.launchAtLogin, isOn: Binding(
+                        get: { settings.launchAtLogin },
+                        set: { settings.launchAtLogin = $0 }))
+                        .disabled(!settings.loginItemAvailable)
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Image(systemName: loginStatusIcon)
+                        Text(loginStatusText)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(loginStatusColor)
+                }
 
-                if !settings.loginItemAvailable {
-                    Text(s.launchAtLoginUnavailable)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if let error = settings.loginItemError {
+                HStack(spacing: 8) {
+                    Button(s.openLoginItems) {
+                        settings.openLoginItemsSettings()
+                    }
+                    .disabled(!settings.loginItemAvailable)
+                    Button(s.refreshStatus) {
+                        settings.refreshLoginItemState()
+                    }
+                    .controlSize(.small)
+                    .disabled(!settings.loginItemAvailable)
+                }
+
+                if let error = settings.loginItemError {
                     Text(error)
                         .font(.caption)
                         .foregroundStyle(.red)
                         .textSelection(.enabled)
+                } else if !settings.loginItemAvailable {
+                    Text(s.launchAtLoginUnavailable)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else if settings.loginItemStatus == .requiresApproval {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(s.loginItemRequiresApproval)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Button(s.openLoginItems) {
-                            settings.openLoginItemsSettings()
-                        }
-                        .controlSize(.small)
-                    }
+                    Text(s.loginItemRequiresApproval)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else if settings.loginItemStatus == .notFound {
                     Text(s.loginItemNotFound)
                         .font(.caption)
@@ -87,6 +102,56 @@ struct GeneralSettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // 从系统设置批准/拒绝登录项后返回，重新读取真实状态
             settings.refreshLoginItemState()
+        }
+    }
+
+    // MARK: - 登录项状态
+
+    private var loginStatusText: String {
+        let s = settings.strings
+        if !settings.loginItemAvailable { return s.loginStatusUnavailable }
+        if settings.loginItemError != nil { return s.loginStatusFailed }
+        switch settings.loginItemStatus {
+        case .enabled?:
+            return s.loginStatusEnabled
+        case .requiresApproval?:
+            return s.loginStatusRequiresApproval
+        case .notFound?:
+            return s.loginStatusNotFound
+        case .notRegistered?:
+            return s.loginStatusNotRegistered
+        default:
+            return s.loginStatusUnavailable
+        }
+    }
+
+    private var loginStatusIcon: String {
+        if !settings.loginItemAvailable { return "minus.circle" }
+        if settings.loginItemError != nil { return "xmark.octagon.fill" }
+        switch settings.loginItemStatus {
+        case .enabled?:
+            return "checkmark.circle.fill"
+        case .requiresApproval?:
+            return "exclamationmark.circle.fill"
+        case .notFound?:
+            return "xmark.octagon.fill"
+        default:
+            return "minus.circle"
+        }
+    }
+
+    private var loginStatusColor: Color {
+        if !settings.loginItemAvailable { return .secondary }
+        if settings.loginItemError != nil { return .red }
+        switch settings.loginItemStatus {
+        case .enabled?:
+            return .green
+        case .requiresApproval?:
+            return .orange
+        case .notFound?:
+            return .red
+        default:
+            return .secondary
         }
     }
 
@@ -579,11 +644,15 @@ private struct BlockColorsSettingsView: View {
 
             if block.adaptiveColors {
                 colorList(title: s.lightBarColors,
-                          entries: $block.lightBarColorEntries)
+                          entries: $block.lightBarColorEntries,
+                          backgroundIsDark: false)
                 colorList(title: s.darkBarColors,
-                          entries: $block.darkBarColorEntries)
+                          entries: $block.darkBarColorEntries,
+                          backgroundIsDark: true)
             } else {
-                colorList(title: nil, entries: $block.colorEntries)
+                colorList(title: nil,
+                          entries: $block.colorEntries,
+                          backgroundIsDark: block.menuBarIsDark)
             }
 
             Text(s.colorsHint)
@@ -596,13 +665,53 @@ private struct BlockColorsSettingsView: View {
     }
 
     /// 一组颜色的编辑列表（添加 / 修改 / 排序 / 删除）
-    private func colorList(title: String?, entries: Binding<[ColorEntry]>) -> some View {
+    private func colorList(title: String?, entries: Binding<[ColorEntry]>,
+                           backgroundIsDark: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if let title {
                 Text(title)
                     .font(.headline)
             }
             ColorListEditor(entries: entries)
+            contrastNotice(entries: entries.wrappedValue, backgroundIsDark: backgroundIsDark)
+        }
+    }
+
+    /// WCAG 大字号阈值：18pt 常规或 14pt 粗体以上使用 3:1，其余 4.5:1。
+    private var contrastThreshold: Double {
+        if block.fontSize >= 18
+            || (block.fontSize >= 14 && block.fontWeight.isBoldLike) {
+            return 3
+        }
+        return 4.5
+    }
+
+    @ViewBuilder
+    private func contrastNotice(entries: [ColorEntry], backgroundIsDark: Bool) -> some View {
+        let s = settings.strings
+        let threshold = contrastThreshold
+        if let report = ContrastChecker.report(entries: entries,
+                                               darkBackground: backgroundIsDark,
+                                               threshold: threshold) {
+            if report.failingCount > 0 {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(s.contrastWarning(
+                        report.minRatio,
+                        threshold,
+                        report.failingCount,
+                        backgroundIsDark ? s.whiteColor : s.blackColor))
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+            } else {
+                Text(s.contrastOK(report.minRatio, threshold))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -672,6 +781,49 @@ private struct ColorListEditor: View {
                 entries[i].hex = NSColor(newValue).hexString
             }
         )
+    }
+}
+
+/// WCAG 对比度估算：菜单栏背景按纯黑/纯白近似。
+private enum ContrastChecker {
+    struct Report {
+        let minRatio: Double
+        let failingCount: Int
+    }
+
+    static func report(entries: [ColorEntry], darkBackground: Bool,
+                       threshold: Double) -> Report? {
+        let backgroundLuminance = darkBackground ? 0.0 : 1.0
+        var minRatio = Double.greatestFiniteMagnitude
+        var failing = 0
+        var valid = 0
+
+        for entry in entries {
+            guard let color = NSColor(hex: entry.hex)?.usingColorSpace(.sRGB) else { continue }
+            valid += 1
+            let ratio = contrastRatio(relativeLuminance(color), backgroundLuminance)
+            minRatio = min(minRatio, ratio)
+            if ratio < threshold { failing += 1 }
+        }
+
+        guard valid > 0 else { return nil }
+        return Report(minRatio: minRatio, failingCount: failing)
+    }
+
+    private static func relativeLuminance(_ color: NSColor) -> Double {
+        func channel(_ value: CGFloat) -> Double {
+            let v = Double(value)
+            return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(color.redComponent)
+            + 0.7152 * channel(color.greenComponent)
+            + 0.0722 * channel(color.blueComponent)
+    }
+
+    private static func contrastRatio(_ lhs: Double, _ rhs: Double) -> Double {
+        let lighter = max(lhs, rhs)
+        let darker = min(lhs, rhs)
+        return (lighter + 0.05) / (darker + 0.05)
     }
 }
 

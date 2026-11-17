@@ -295,7 +295,7 @@ final class BlockSettings: ObservableObject, Identifiable {
         }
     }
     /// 左键点击该块时打开系统日历（右键改为打开应用菜单，保证菜单入口仍在）。
-    @Published var calendarOnLeftClick: Bool { didSet { onChange?(.persist) } }
+    @Published var calendarOnLeftClick: Bool { didSet { onChange?(.display) } }
 
     /// DateFormatter 的创建成本较高，按块缓存；pattern 变化时重建。
     private var dateFormatter: DateFormatter?

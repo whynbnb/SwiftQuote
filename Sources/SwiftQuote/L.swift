@@ -28,6 +28,10 @@ struct L {
         t("SwiftQuote：左键打开菜单，右键编辑文字",
           "SwiftQuote — left-click for menu, right-click to edit")
     }
+    var statusItemCalendarToolTip: String {
+        t("SwiftQuote：左键打开日历，右键打开菜单",
+          "SwiftQuote — left-click opens Calendar, right-click opens the menu")
+    }
 
     // MARK: 输入面板
     var inputPlaceholder: String { t("输入内容，回车确认", "Type and press Return") }
@@ -111,6 +115,13 @@ struct L {
     var openLoginItems: String {
         t("打开登录项设置", "Open Login Items Settings")
     }
+    var refreshStatus: String { t("刷新状态", "Refresh Status") }
+    var loginStatusEnabled: String { t("已启用", "Enabled") }
+    var loginStatusRequiresApproval: String { t("待批准", "Pending Approval") }
+    var loginStatusNotFound: String { t("未找到", "Not Found") }
+    var loginStatusNotRegistered: String { t("未启用", "Not Enabled") }
+    var loginStatusUnavailable: String { t("不可用", "Unavailable") }
+    var loginStatusFailed: String { t("失败", "Failed") }
 
     // MARK: 备份与恢复
     var groupBackup: String { t("备份与恢复", "Backup & Restore") }
@@ -181,7 +192,20 @@ struct L {
     var darkBarColors: String  { t("深色菜单栏（用浅色文字）", "Dark Menu Bar (light text)") }
     var resetColors: String { t("恢复默认", "Reset to Default") }
     var colorsHint: String {
-        t("颜色依次循环应用到每个字符；拖动可排序", "Colors cycle through characters; drag to reorder")
+        t("颜色依次循环应用到每个字符；拖动可排序。对比度按黑/白菜单栏背景估算。",
+          "Colors cycle through characters; drag to reorder. Contrast is estimated against black/white menu bar backgrounds.")
+    }
+    var whiteColor: String { t("白色", "white") }
+    var blackColor: String { t("黑色", "black") }
+    func contrastWarning(_ ratio: Double, _ threshold: Double,
+                         _ count: Int, _ suggestion: String) -> String {
+        let countText = count > 1 ? (isChinese ? "（\(count) 个颜色）" : " (\(count) colors)") : ""
+        return t("对比度 \(String(format: "%.1f", ratio)):1，低于 \(String(format: "%.1f", threshold)):1\(countText)；建议改用\(suggestion)文字。",
+                 "Contrast \(String(format: "%.1f", ratio)):1, below \(String(format: "%.1f", threshold)):1\(countText); use \(suggestion) text.")
+    }
+    func contrastOK(_ ratio: Double, _ threshold: Double) -> String {
+        t("对比度 \(String(format: "%.1f", ratio)):1（建议 ≥\(String(format: "%.1f", threshold)):1）",
+          "Contrast \(String(format: "%.1f", ratio)):1 (≥\(String(format: "%.1f", threshold)):1 recommended)")
     }
 
     // MARK: 历史记录
